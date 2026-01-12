@@ -1,0 +1,39 @@
+# Cargo Configuration
+
+# Production-ready settings for Claude Agent Rust SDK builds.
+
+[build]
+# Enable incremental compilation
+incremental = true
+
+[profile.release]
+# Optimize for size and speed
+opt-level = 3
+lto = true
+codegen-units = 1
+
+# Strip debug symbols
+strip = true
+
+[profile.dev]
+# Faster builds for development
+opt-level = 0
+
+[doc]
+# Document all public APIs
+document-private-items = false
+
+# Open documentation in browser after build
+open = true
+
+[clippy]
+# Maximize warnings for production code
+warn-on-all-wildcard-imports = true
+
+# Allow certain pedantic lints
+allow-print = true
+allow-unwrap-in-tests = true
+
+[net]
+# Network optimizations for faster builds
+git-fetch-with-cli = true
