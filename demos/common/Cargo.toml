@@ -1,0 +1,26 @@
+[package]
+name = "claude-agent-demos-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+claude-agent-api.workspace = true
+claude-agent-types.workspace = true
+claude-agent-transport.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+async-stream.workspace = true
+futures.workspace = true
+tempfile = "3.8"
+
+[dev-dependencies]
+mockall.workspace = true

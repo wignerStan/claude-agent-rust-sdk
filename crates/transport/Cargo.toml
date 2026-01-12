@@ -1,0 +1,18 @@
+[package]
+name = "claude-agent-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+tokio = { workspace = true, features = ["process", "io-util"] }
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+claude-agent-types = { path = "../types" }
+which = { workspace = true }
+dirs = "4.0"
+pin-project-lite = "0.2"
+tokio-stream = { workspace = true, features = ["sync"] }
+

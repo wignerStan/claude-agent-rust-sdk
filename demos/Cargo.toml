@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "common",
+    "hello-world",
+    "hello-world-v2",
+    "resume-generator",
+    "research-agent",
+    "simple-chatapp",
+    "email-agent",
+]
+
+[workspace.dependencies]
+# Shared with parent workspace
+claude-agent-api = { path = "../crates/api" }
+claude-agent-types = { path = "../crates/types" }
+claude-agent-core = { path = "../crates/core" }
+claude-agent-transport = { path = "../crates/transport" }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-tungstenite = "0.20"
+futures = "0.3"
+async-trait = "0.1"
+async-stream = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Utilities
+chrono = "0.4"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+tempfile = "3.8"
+
+# Email agent
+imap = "2.4"
+mail-parser = "0.8"
+
+# Testing
+mockall = "0.11"
+cargo-tarpaulin = "0.27"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"

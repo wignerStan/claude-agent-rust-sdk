@@ -1,0 +1,63 @@
+# Build stage
+FROM rust:1.82-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+
+# Create dummy main.rs to cache dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo fetch
+
+# Copy source code
+COPY src ./src
+
+# Build application
+RUN cargo build --release
+
+# Runtime stage
+FROM alpine:latest AS runtime
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tini
+
+# Create app user for security
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/{{PROJECT_NAME}} /usr/local/bin/{{PROJECT_NAME}}
+
+# Set permissions
+RUN chmod +x /usr/local/bin/{{PROJECT_NAME}}
+
+# Switch to non-root user
+USER appuser
+
+# Set runtime environment
+ENV HOST=0.0.0.0
+ENV PORT=3000
+EXPOSE 3000
+
+# Set working directory
+WORKDIR /app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}/health" || exit 1
+
+# Run application
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["{{PROJECT_NAME}}"]

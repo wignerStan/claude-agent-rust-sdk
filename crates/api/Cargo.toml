@@ -1,0 +1,20 @@
+[package]
+name = "claude-agent-api"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+claude-agent-types = { path = "../types" }
+claude-agent-core = { path = "../core" }
+claude-agent-transport = { path = "../transport" }
+tokio.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+claude-agent-mcp = { path = "../mcp" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+which.workspace = true

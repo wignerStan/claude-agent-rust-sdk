@@ -1,0 +1,17 @@
+[package]
+name = "claude-agent-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+claude-agent-types = { path = "../types" }
+claude-agent-transport = { path = "../transport" }
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
