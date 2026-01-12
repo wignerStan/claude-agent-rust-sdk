@@ -1,101 +1,219 @@
-# Claude Agent SDK (Rust)
+# Claude Agent Rust SDK
 
-A pure Rust migration of the Claude Agent SDK, providing a powerful interface to Claude Code with official Model Context Protocol (MCP) integration.
+A comprehensive Rust SDK for building agents that interact with Claude Code CLI via the Model Context Protocol (MCP).
+
+[![Crates.io](https://img.shields.io/crates/d/claude-agent-rust)](https://crates.io/crates/claude-agent-rust)
+[![License](https://img.shields.io/badge/License-MIT%20OR%20Apache-2.0-blue)](https://github.com/claude-agent-rust/claude-agent-rust/blob/main/LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.83+-orange)](https://www.rust-lang.org/)
+[![Build Status](https://img.shields.io/github/actions/workflows/CI/claude-agent-rust/claude-agent-rust/badge.svg)](https://github.com/claude-agent-rust/claude-agent-rust/actions)
 
 ## Features
 
-- **High-Level API**: Easy-to-use client for one-shot queries and interactive sessions.
-- **Model Context Protocol (MCP)**: First-class support for MCP servers and tools.
-- **Agentic Workflow**: Built-in support for tool use, computer use, and multi-turn conversations.
-- **Robustness**: Type-safe control flow, error handling, and reconnection logic.
-- **Extensible**: Hook system for intercepting agent actions and messages.
+- **Transport Layer**: Subprocess-based communication with Claude Code CLI
+- **MCP Server Management**: Centralized registry for managing multiple MCP servers
+- **Session Management**: Checkpoint-based conversation state tracking
+- **Control Protocol**: Bidirectional communication with Claude Code CLI
+- **Hook System**: Extensible callback system for custom behavior
+- **Permission Handling**: User approval system for file operations
+- **Streaming Message Parser**: Efficient JSON-RPC message parsing
+- **Type Definitions**: Comprehensive type system for all SDK components
 
-## Project Structure
+## Installation
 
-- `crates/types`: Core type definitions and error types.
-- `crates/transport`: Low-level communication with Claude Code CLI (async/await).
-- `crates/mcp`: Model Context Protocol (MCP) integration manager.
-- `crates/core`: Internal agent logic, session management, and control flow.
-- `crates/api`: High-level public API for developers.
-
-## Getting Started
-
-### Prerequisites
-
-- Rust 1.75+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and available in `PATH`.
-  - Authenticate via `claude login`.
-
-### Installation
-
-Add `claude-agent-api` to your `Cargo.toml`:
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-claude-agent-api = { path = "crates/api" } # Currently local
-tokio = { version = "1.0", features = ["full"] }
+claude-agent-rust = "0.1.0"
 ```
 
-### Quick Start
+## Quick Start
+
+### Basic Usage
 
 ```rust
-use claude_agent_api::ClaudeAgentClient;
-use tokio;
+use claude_agent_core::{ClaudeAgent, ClaudeAgentOptions};
+use claude_agent_types::Message;
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Initialize Client
-    let mut client = ClaudeAgentClient::default();
-    client.connect().await?;
+    let options = ClaudeAgentOptions::default();
+    let mut agent = ClaudeAgent::new(options);
 
-    // 2. Send a query
-    let mut stream = client.query("What is 2 + 2?").await?;
+    // Connect to Claude
+    agent.connect(None).await?;
 
-    // 3. Process the response stream
-    while let Some(message) = stream.next().await {
-        match message {
-            Ok(msg) => println!("Received: {:?}", msg),
+    // Send a query
+    let mut stream = agent.query("What is 2+2?").await?;
+
+    // Process streaming responses
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(msg) => println!("Response: {:?}", msg),
             Err(e) => eprintln!("Error: {}", e),
         }
     }
+
+    // Cleanup
+    agent.disconnect().await?;
+    Ok(())
+}
+```
+
+### MCP Server Integration
+
+```rust
+use claude_agent_mcp::{McpServerManager, McpServer};
+use claude_agent_mcp::StdioMcpServer;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut manager = McpServerManager::new();
+
+    // Register a custom MCP server
+    let server = StdioMcpServer::new(
+        "my_server".to_string(),
+        "python".to_string(),
+        vec!["-m".to_string(), "my_mcp_server".to_string()]
+    );
+
+    manager.register(Box::new(server));
+
+    // List available tools
+    let tools = manager.list_all_tools().await?;
+    println!("Available tools: {:?}", tools);
 
     Ok(())
 }
 ```
 
-## Examples
+## Project Structure
 
-Check out the `examples` directory for more use cases:
-
-- `quick_start.rs`: Basic query.
-- `mcp_calculator.rs`: integrating a simple calculator tool via MCP.
-- `hooks.rs`: Using hooks to intercept messages.
-- `streaming_mode.rs`: real-time usage.
-
-Run an example:
-```bash
-cargo run -p claude-agent-api --example quick_start
 ```
+claude-agent-rust/
+├── Cargo.toml              # Workspace configuration
+├── crates/                 # Workspace members
+│   ├── types/            # Type definitions
+│   ├── transport/         # Transport layer
+│   ├── mcp/              # MCP server management
+│   ├── core/             # Core agent logic
+│   └── api/              # API client
+├── demos/                 # Example applications
+├── CHANGELOG.md           # Change history
+├── ROADMAP.md            # Development roadmap
+├── CONFIGURATION.md      # Configuration documentation
+├── LICENSE-MIT            # MIT license
+├── LICENSE-APACHE         # Apache 2.0 license
+├── CONTRIBUTING.md        # Contribution guidelines
+├── CODE_OF_CONDUCT.md    # Community standards
+└── README.md              # This file
+```
+
+## Documentation
+
+- [CHANGELOG.md](CHANGELOG.md) - Detailed change history
+- [ROADMAP.md](ROADMAP.md) - Development roadmap and milestones
+- [CONFIGURATION.md](CONFIGURATION.md) - Configuration file documentation
+- [PRODUCTION_CONFIG.md](PRODUCTION_CONFIG.md) - Production setup guide
+- [API Documentation](https://docs.rs/claude-agent-rust) - Comprehensive API docs
 
 ## Development
 
 ### Building
 
 ```bash
-cargo build --all-features
+# Build all workspace members
+cargo build --workspace
+
+# Build specific crate
+cargo build -p claude-agent-core
 ```
 
-### Running Tests
+### Testing
 
 ```bash
-# Unit tests
+# Run all tests
 cargo test --workspace
 
-# E2E Tests (Requires Anthropic API Key)
-./run_e2e.sh
+# Run tests with output
+cargo test --workspace -- --nocapture
+
+# Run specific test
+cargo test -p claude-agent-transport -- test_name
 ```
+
+### Code Quality
+
+```bash
+# Format code
+cargo fmt --all
+
+# Run linter
+cargo clippy --workspace --all-targets
+
+# Check code
+cargo check --workspace
+```
+
+### Using Just
+
+```bash
+# Build workspace
+just build
+
+# Run all tests
+just test
+
+# Run all quality checks
+just qa
+
+# Format code
+just fmt
+
+# Run linter
+just lint
+
+# Check code
+just check
+```
+
+## Configuration
+
+The SDK uses workspace inheritance for dependencies. See [CONFIGURATION.md](CONFIGURATION.md) for detailed configuration options.
+
+### Environment Variables
+
+- `CLAUDE_CLI_PATH` - Path to Claude Code CLI binary (optional)
+- `RUST_LOG` - Logging level (e.g., `debug`, `info`, `warn`, `error`)
 
 ## License
 
-MIT OR Apache-2.0
+This project is dual-licensed under:
 
+- MIT License - See [LICENSE-MIT](LICENSE-MIT)
+- Apache License 2.0 - See [LICENSE-APACHE](LICENSE-APACHE)
+
+You may choose to use either license for your use case.
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Code of Conduct
+
+Please be respectful and inclusive. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details.
+
+## Support
+
+- [GitHub Issues](https://github.com/claude-agent-rust/claude-agent-rust/issues)
+- [GitHub Discussions](https://github.com/claude-agent-rust/claude-agent-rust/discussions)
+- [Documentation](https://docs.rs/claude-agent-rust)
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned features and development priorities.
+
+---
+
+**Note:** This SDK is in active development. APIs may change as we approach v1.0.0.

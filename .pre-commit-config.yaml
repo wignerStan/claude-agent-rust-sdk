@@ -1,0 +1,32 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all
+        pass: true
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        pass: true
+
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --workspace
+        pass: true
+
+      - id: cargo-doc
+        name: cargo doc
+        entry: cargo doc --workspace --no-deps
+        pass: true
+
+      - id: clippy
+        name: clippy check
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        pass: true
+
+      - id: deny
+        name: deny check
+        entry: cargo-deny check bans sources licenses
+        pass: true

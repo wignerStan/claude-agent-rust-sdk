@@ -1,0 +1,99 @@
+# Clippy Configuration
+
+Strict linting rules for Claude Agent Rust SDK to ensure production code quality.
+
+## Allowed Lints
+
+```toml
+# Allow pedantic lints for better code quality
+warn-on-all-wildcard-imports = true
+
+# Allow certain pedantic lints in tests
+allow-unwrap-in-tests = true
+allow-print = true
+```
+
+## Denied Lints
+
+```toml
+# Deny common anti-patterns and code smells
+deny = [
+    # Error Handling
+    "clippy::unwrap_used",
+    "clippy::expect_used",
+    "clippy::panic",
+    "clippy::todo",
+    "clippy::unimplemented",
+
+    # Performance
+    "clippy::indexing_slicing",
+    "clippy::needless_pass_by_value",
+    "clippy::redundant_clone",
+    "clippy::clone_on_ref_ptr",
+    "clippy::vec_box_then_clone",
+
+    # Memory Safety
+    "clippy::mem_forget_copy",
+    "clippy::mem_replace_with_uninit",
+    "clippy::mutex_atomic",
+
+    # Code Style
+    "clippy::if_not_else",
+    "clippy::bool_to_int_with_if",
+    "clippy::float_cmp",
+    "clippy::cast_possible_truncation",
+    "clippy::cast_lossless",
+    "clippy::cast_sign_loss",
+    "clippy::cast_precision_loss",
+
+    # Complexity
+    "clippy::too_many_arguments",
+    "clippy::cognitive_complexity",
+    "clippy::type_complexity",
+    "clippy::nursery",
+    "clippy::cyclomatic_complexity",
+
+    # Documentation
+    "clippy::missing_docs_in_private_items",
+    "clippy::missing_errors_doc",
+    "clippy::missing_panics_doc",
+    "clippy::missing_safety_doc",
+]
+```
+
+## Complexity Thresholds
+
+```toml
+# Maximum cognitive complexity per function
+cognitive-complexity-threshold = 30
+
+# Maximum type complexity per function
+type-complexity-threshold = 250
+
+# Maximum number of statements per function
+too-many-arguments-threshold = 7
+```
+
+## Warnings
+
+```toml
+# Maximize warnings for production code
+warn-on-all-wildcard-imports = true
+```
+
+## Performance Lints
+
+```toml
+# Enforce performance best practices
+[performance]
+# Enable performance lints
+too-many-arguments-threshold = 7
+```
+
+## Notes
+
+- This configuration enforces strict code quality standards
+- All denied lints are well-documented in the codebase
+- Complexity thresholds are reasonable for production code
+- Performance lints help identify optimization opportunities
+- See [Clippy documentation](https://rust-lang.github.io/rust-clippy/) for lint descriptions

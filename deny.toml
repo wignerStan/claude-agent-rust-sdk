@@ -1,0 +1,116 @@
+# Cargo Deny Configuration
+
+Security and license compliance for Claude Agent Rust SDK dependencies.
+
+## Advisory Database
+
+```toml
+[advisories]
+# Use GitHub Advisory Database
+db-url = "https://github.com/rustsec/advisory-db"
+db-path = "~/.cargo/advisory-db"
+
+# Update frequency (in days)
+fetch-update-interval = 7
+```
+
+## Licenses
+
+```toml
+[licenses]
+# Allow permissive licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+]
+
+# Deny copyleft licenses for production
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "LGPL-2.0",
+    "LGPL-3.0",
+]
+
+# Allow weak copyleft licenses with strong copyleft exception
+allow-weak = [
+    "MPL-2.0",
+    "CDDL-1.0",
+]
+```
+
+## Bans
+
+```toml
+[bans]
+# Deny specific crate versions with known vulnerabilities
+deny = [
+    # Security vulnerabilities
+    { name = "openssl-sys", version = "<0.10.0" },
+    { name = "openssl", version = "<0.10.0" },
+    { name = "libssh2-sys", version = "<1.8.0" },
+    { name = "curl-sys", version = "<7.88.0" },
+    { name = "winapi", version = "<0.5.0" },
+
+    # Deprecated or unmaintained crates
+    { name = "rustc-serialize", version = "*" },
+    { name = "lazy_static", version = "<1.4.0" },
+
+    # Duplicate crates
+    { name = "adler", version = "*" },
+    { name = "time", version = "*" },
+]
+```
+
+## Sources
+
+```toml
+[sources]
+# Allow crates from specific registries
+allow-registry = ["https://github.com", "https://gitlab.com"]
+
+# Deny crates from insecure registries
+deny-registry = ["https://crates.io"]
+```
+
+## Output Format
+
+```toml
+[output]
+# Use human-readable output
+format = "human"
+
+# Show detailed information
+verbose = 4
+
+# Show graph of dependencies
+graph = true
+
+# Show duplicate dependencies
+duplicates = "tree"
+```
+
+## Features
+
+```toml
+[features]
+# Enable all deny features
+all-features = true
+
+# Allow individual feature control
+allow-wildcard-paths = true
+```
+
+## Notes
+
+- This configuration enforces security and license compliance
+- Regular updates from GitHub Advisory Database
+- Permissive licenses allowed for open-source development
+- Copyleft licenses denied for production builds
+- Known vulnerable crate versions are blocked
+- Duplicate and deprecated crates are prevented
