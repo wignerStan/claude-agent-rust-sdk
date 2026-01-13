@@ -1,8 +1,8 @@
 # Implementation Plan: Refactor MCP Constructors to Return Result
 
-## Phase 1: Core Type Update
+## Phase 1: Core Type Update [checkpoint: 14fcecd]
 - [x] Task: Add `Initialization(String)` variant to `ClaudeAgentError` in `crates/types/src/error.rs` 8143299
-- [ ] Task: Conductor - User Manual Verification 'Core Type Update' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Core Type Update' (Protocol in workflow.md)
 
 ## Phase 2: SseMcpServer Refactor
 - [ ] Task: Write failing tests for `SseMcpServer` initialization failures (e.g., invalid timeout/config simulation if possible)
