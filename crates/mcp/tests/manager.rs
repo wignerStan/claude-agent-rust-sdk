@@ -3,7 +3,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn test_manager_registration_and_listing() {
-    let mut manager = McpServerManager::new();
+    let manager = McpServerManager::new();
 
     // Register SDK server
     let mut sdk_server = SdkMcpServer::new("sdk-server");
@@ -11,7 +11,7 @@ async fn test_manager_registration_and_listing() {
         Box::pin(async { Ok(json!({"result": "ok"})) })
     });
 
-    manager.register(Box::new(sdk_server));
+    manager.register(Box::new(sdk_server)).await;
 
     // Register "Stdio" server (dummy for this test since we don't spawn real process)
     // Actually StdioMcpServer logic tries to spawn process on connect.
@@ -20,7 +20,7 @@ async fn test_manager_registration_and_listing() {
     // So we should verify with just SDK server for now, or Mock.
 
     // Check servers list
-    let servers = manager.list_servers();
+    let servers = manager.list_servers().await;
     assert_eq!(servers.len(), 1);
     assert!(servers.contains(&"sdk-server".to_string()));
 

@@ -35,7 +35,7 @@
 //!     println!("Available tools: {:?}", tools);
 //!
 //!     // Get a server and call a tool
-//!     if let Some(server) = manager.get("calculator") {
+//!     if let Some(server) = manager.get("calculator").await {
 //!         let result = server.call_tool("add", serde_json::json!({"a": 5, "b": 3})).await?;
 //!         println!("Result: {:?}", result);
 //!     }
@@ -277,59 +277,21 @@ impl McpServerManager {
     }
 
     /// Register an MCP server.
-    pub fn register(&mut self, server: Box<dyn McpServer>) {
+    pub async fn register(&self, server: Box<dyn McpServer>) {
         let name = server.name().to_string();
-        // Use blocking write if possible? No, we are in async context usually.
-        // But register takes &mut self, implying exclusive access.
-        // But internal is RwLock.
-        // We can't block. We should make register async?
-        // OR we use try_write/blocking_write if we assume we are not in async runtime yet?
-        // But we might be.
-        // If we change register to async, it breaks API.
-        // However, if we have &mut self, we are the only one holding this struct?
-        // No, `servers` is Arc. Other clones might exist.
-        // So we MUST use async write or blocking write.
-        // Since this is usually called at setup, `blocking_write` might panic if in async context?
-        // Use `tokio::task::block_in_place`?
-        // Ideally register should be async.
-        // But for backward compat, let's try to use std::sync::RwLock if we don't need async lock?
-        // But servers need to be accessed async in get/list.
-        // Let's use `futures::executor::block_on`?
-        // Actually, if we spawn a task to do it?
-
-        // Simpler: Just spawn a task? No we want it done now.
-        // For now, let's use `try_write`. If it fails, we spin?
-        // Or better: Change `register` to `async fn register`.
-        // This breaks API but it's cleaner.
-
-        // Wait, if we use `parking_lot::RwLock`, we can write synchronously.
-        // Does McpServerManager need to be async aware?
-        // `get` returns `Option<Arc>`.
-        // `list_all_tools` is async because it calls `list_tools` on servers.
-        // The map access itself can be sync.
-        // So let's use `std::sync::RwLock` or `parking_lot::RwLock`.
-        // Since we are in tokio environment, `std::sync::RwLock` is fine if we don't hold it across await points.
-        // `list_all_tools` iterates. If we hold read lock while awaiting `list_tools`, we block writers.
-        // We should clone the servers list then iterate.
-
-        let mut servers = self.servers.blocking_write();
+        let mut servers = self.servers.write().await;
         servers.insert(name, Arc::from(server));
     }
 
-    // Helper for sync writing (using tokio blocking_write which might not exist on RwLock?)
-    // Tokio RwLock has `blocking_write`.
-
     /// Get a server by name.
-    pub fn get(&self, name: &str) -> Option<Arc<dyn McpServer>> {
-        // Use blocking read
-        self.servers.blocking_read().get(name).cloned()
+    pub async fn get(&self, name: &str) -> Option<Arc<dyn McpServer>> {
+        self.servers.read().await.get(name).cloned()
     }
 
     /// List all registered servers.
-    pub fn list_servers(&self) -> Vec<String> {
-        self.servers.blocking_read().keys().cloned().collect()
+    pub async fn list_servers(&self) -> Vec<String> {
+        self.servers.read().await.keys().cloned().collect()
     }
-
     /// List all tools from all servers.
     pub async fn list_all_tools(&self) -> Result<Vec<(String, ToolInfo)>, ClaudeAgentError> {
         // Snapshot servers to release lock

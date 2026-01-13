@@ -265,7 +265,7 @@ impl ClaudeAgent {
                                               let message = req_payload.get("message");
 
                                               if let (Some(name), Some(msg)) = (server_name, message) {
-                                                  if let Some(server) = mcp_manager.get(name) {
+                                                  if let Some(server) = mcp_manager.get(name).await {
                                                       match server.handle_client_message(msg.clone()).await {
                                                           Ok(res) => res,
                                                           Err(e) => serde_json::json!({"error": e.to_string()})
