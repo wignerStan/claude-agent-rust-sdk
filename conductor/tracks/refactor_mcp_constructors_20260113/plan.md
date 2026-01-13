@@ -10,11 +10,11 @@
 - [x] Task: Update call sites in `crates/mcp/src/transport_factory.rs` and tests fc29e72
 - [x] Task: Conductor - User Manual Verification 'SseMcpServer Refactor' (Protocol in workflow.md)
 
-## Phase 3: HttpMcpServer Refactor
+## Phase 3: HttpMcpServer Refactor [checkpoint: 3e043ae]
 - [x] Task: Write failing tests for `HttpMcpServer` initialization failures 1dfb916
 - [x] Task: Refactor `HttpMcpServer::new` and `HttpMcpServer::with_timeout` to return `Result<Self, ClaudeAgentError>` 1dfb916
 - [x] Task: Update call sites in `crates/mcp/src/transport_factory.rs` and tests 1dfb916
-- [ ] Task: Conductor - User Manual Verification 'HttpMcpServer Refactor' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'HttpMcpServer Refactor' (Protocol in workflow.md)
 
 ## Phase 4: StdioMcpServer Consistency
 - [ ] Task: Update `StdioMcpServer::new` to return `Result<Self, ClaudeAgentError>` for API consistency
