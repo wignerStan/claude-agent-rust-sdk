@@ -618,9 +618,10 @@ impl HttpMcpServer {
     /// ```rust,no_run
     /// use claude_agent_mcp::transports::HttpMcpServer;
     ///
-    /// let server = HttpMcpServer::new("my_http_server".to_string(), "http://localhost:8080".to_string());
+    /// let server = HttpMcpServer::new("my_http_server".to_string(), "http://localhost:8080".to_string())?;
+    /// # Ok::<(), claude_agent_types::ClaudeAgentError>(())
     /// ```
-    pub fn new(name: String, url: String) -> Self {
+    pub fn new(name: String, url: String) -> Result<Self, ClaudeAgentError> {
         Self::with_timeout(name, url, std::time::Duration::from_secs(30))
     }
 
@@ -631,17 +632,23 @@ impl HttpMcpServer {
     /// - `name`: Unique identifier for this server
     /// - `url`: HTTP endpoint URL
     /// - `timeout`: Request timeout duration
-    pub fn with_timeout(name: String, url: String, timeout: std::time::Duration) -> Self {
+    pub fn with_timeout(
+        name: String,
+        url: String,
+        timeout: std::time::Duration,
+    ) -> Result<Self, ClaudeAgentError> {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .expect("Failed to build HTTP client");
-        Self {
+            .map_err(|e| {
+                ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
+            })?;
+        Ok(Self {
             name,
             url,
             client,
             timeout,
-        }
+        })
     }
 
     /// Send a JSON-RPC request to the HTTP MCP server.

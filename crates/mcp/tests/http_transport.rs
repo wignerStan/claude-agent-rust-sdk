@@ -28,7 +28,8 @@ async fn test_http_mcp_server_list_tools() {
         .mount(&mock_server)
         .await;
 
-    let server = HttpMcpServer::new("test".to_string(), mock_server.uri());
+    let server =
+        HttpMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
     let tools = server.list_tools().await.unwrap();
 
     assert_eq!(tools.len(), 1);
@@ -52,7 +53,8 @@ async fn test_http_mcp_server_call_tool() {
         .mount(&mock_server)
         .await;
 
-    let server = HttpMcpServer::new("test".to_string(), mock_server.uri());
+    let server =
+        HttpMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
     let result = server
         .call_tool("greet", json!({"name": "World"}))
         .await
@@ -71,7 +73,8 @@ async fn test_http_mcp_server_http_error() {
         .mount(&mock_server)
         .await;
 
-    let server = HttpMcpServer::new("test".to_string(), mock_server.uri());
+    let server =
+        HttpMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
     let result = server.list_tools().await;
 
     assert!(result.is_err());
@@ -96,7 +99,8 @@ async fn test_http_mcp_server_jsonrpc_error() {
         .mount(&mock_server)
         .await;
 
-    let server = HttpMcpServer::new("test".to_string(), mock_server.uri());
+    let server =
+        HttpMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
     let result = server.list_tools().await;
 
     assert!(result.is_err());
@@ -162,7 +166,8 @@ async fn test_sse_mcp_server_call_tool() {
 #[tokio::test]
 async fn test_http_mcp_server_handle_client_message_initialize() {
     let mock_server = MockServer::start().await;
-    let server = HttpMcpServer::new("test_server".to_string(), mock_server.uri());
+    let server = HttpMcpServer::new("test_server".to_string(), mock_server.uri())
+        .expect("Failed to create server");
 
     let message = json!({
         "jsonrpc": "2.0",
@@ -185,7 +190,8 @@ async fn test_http_mcp_server_handle_client_message_initialize() {
 #[tokio::test]
 async fn test_http_mcp_server_connection_refused() {
     // Use a port that's unlikely to be in use
-    let server = HttpMcpServer::new("test".to_string(), "http://127.0.0.1:59999".to_string());
+    let server = HttpMcpServer::new("test".to_string(), "http://127.0.0.1:59999".to_string())
+        .expect("Failed to create server");
     let result = server.list_tools().await;
 
     assert!(result.is_err());

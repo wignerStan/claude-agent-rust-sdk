@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = HttpMcpServer::new(
         "my_mcp_server".to_string(),
         "http://localhost:8080/mcp".to_string(),
-    );
+    )?;
 
     // List available tools
     let tools = server.list_tools().await?;
@@ -53,7 +53,7 @@ let server = HttpMcpServer::with_timeout(
     "my_server".to_string(),
     "http://localhost:8080/mcp".to_string(),
     Duration::from_secs(60),
-);
+)?;
 ```
 
 ## Error Handling
@@ -65,7 +65,8 @@ use claude_agent_mcp::transports::HttpMcpServer;
 use claude_agent_mcp::manager::McpServer;
 
 async fn example() {
-    let server = HttpMcpServer::new("test".to_string(), "http://localhost:8080".to_string());
+    let server = HttpMcpServer::new("test".to_string(), "http://localhost:8080".to_string())
+        .expect("Failed to create server");
 
     match server.list_tools().await {
         Ok(tools) => println!("Got {} tools", tools.len()),

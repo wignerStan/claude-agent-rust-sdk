@@ -74,9 +74,9 @@ fn create_http_server(
     })?;
 
     let server = if let Some(timeout) = config.timeout_secs {
-        HttpMcpServer::with_timeout(name, url, Duration::from_secs(timeout))
+        HttpMcpServer::with_timeout(name, url, Duration::from_secs(timeout))?
     } else {
-        HttpMcpServer::new(name, url)
+        HttpMcpServer::new(name, url)?
     };
 
     Ok(Arc::new(server))
