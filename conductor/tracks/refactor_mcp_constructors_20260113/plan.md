@@ -17,8 +17,8 @@
 - [x] Task: Conductor - User Manual Verification 'HttpMcpServer Refactor' (Protocol in workflow.md)
 
 ## Phase 4: StdioMcpServer Consistency
-- [ ] Task: Update `StdioMcpServer::new` to return `Result<Self, ClaudeAgentError>` for API consistency
-- [ ] Task: Update all call sites in `crates/mcp/` tests and examples
+- [x] Task: Update `StdioMcpServer::new` to return `Result<Self, ClaudeAgentError>` for API consistency 93cb82b
+- [x] Task: Update all call sites in `crates/mcp/` tests and examples 93cb82b
 - [ ] Task: Conductor - User Manual Verification 'StdioMcpServer Consistency' (Protocol in workflow.md)
 
 ## Phase 5: API and Example Migration
