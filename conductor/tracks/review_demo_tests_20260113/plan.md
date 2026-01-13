@@ -1,7 +1,7 @@
 # Implementation Plan: Comprehensive Test and Review of Demo Applications
 
-## Phase 1: Basic Demos Verification
-- [ ] Task: Review and Execute Tests for `demos/hello-world` 3afac16
+## Phase 1: Basic Demos Verification [checkpoint: d25d792]
+- [x] Task: Review and Execute Tests for `demos/hello-world` 3afac16
     - Sub-task: Analyze `main.rs` and `integration_test.rs`
     - Sub-task: Run `cargo test -p hello-world` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD (Red/Green/Refactor)
@@ -9,7 +9,7 @@
     - Sub-task: Analyze enhanced features in `main.rs` and `integration_test.rs`
     - Sub-task: Run `cargo test -p hello-world-v2` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD
-- [ ] Task: Conductor - User Manual Verification 'Basic Demos Verification' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Basic Demos Verification' (Protocol in workflow.md) d25d792
 
 ## Phase 2: Agent-Specific Demos Verification
 - [ ] Task: Review and Execute Tests for `demos/email-agent`
