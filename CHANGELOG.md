@@ -17,15 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed all formatting issues with `cargo fmt`
 - Prefixed unused variables with underscore to suppress clippy warnings
 - Simplified `.pre-commit-config.yaml` to avoid file argument issues
+- Fixed `deny.toml` syntax errors (removed markdown code blocks)
+- Fixed pre-commit hook configuration (changed `language: system` to use `bash -c` wrapper)
 
 ### Changed
 - Improved error handling throughout the codebase
 - Enhanced code quality and maintainability
 - Reduced clippy warnings from 8 to 0 (excluding expected deprecation warnings)
+- Added comprehensive pre-commit hooks from pre-commit/pre-commit-hooks repository
+
+### Known Issues
+- Pre-commit `cargo-clippy` hook fails due to deprecated `SseMcpServer` and `HttpMcpServer` implementations in `transports.rs`
+  - These are placeholder implementations marked as deprecated
+  - Clippy treats deprecation warnings as errors with `-D warnings`
+  - Workaround: Run `pre-commit run cargo-clippy --all-files --hook-stage manual` to skip this hook
+  - Future fix: Either remove deprecated code or allow deprecated warnings for this specific module
 
 ### Tests
 - All 18 tests passing successfully
-- Pre-commit hooks now working correctly
+- Pre-commit hooks now working correctly (except cargo-clippy due to known issue above)
 
 ## [0.1.0] - 2026-01-13
 
