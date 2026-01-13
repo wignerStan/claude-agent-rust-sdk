@@ -126,7 +126,8 @@ async fn test_sse_mcp_server_list_tools() {
         .mount(&mock_server)
         .await;
 
-    let server = SseMcpServer::new("test".to_string(), mock_server.uri());
+    let server =
+        SseMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
     let tools = server.list_tools().await.unwrap();
 
     assert_eq!(tools.len(), 1);
@@ -150,7 +151,8 @@ async fn test_sse_mcp_server_call_tool() {
         .mount(&mock_server)
         .await;
 
-    let server = SseMcpServer::new("test".to_string(), mock_server.uri());
+    let server =
+        SseMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
     let result = server.call_tool("sse_action", json!({})).await.unwrap();
 
     assert_eq!(result.get("isError").and_then(|v| v.as_bool()), Some(false));

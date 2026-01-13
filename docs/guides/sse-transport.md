@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = SseMcpServer::new(
         "my_sse_server".to_string(),
         "http://localhost:8080/sse".to_string(),
-    );
+    )?;
 
     // List available tools
     let tools = server.list_tools().await?;
@@ -53,7 +53,7 @@ let server = SseMcpServer::with_timeout(
     "analysis_server".to_string(),
     "http://localhost:8080/sse".to_string(),
     Duration::from_secs(120),
-);
+)?;
 ```
 
 ## Error Handling
@@ -65,7 +65,8 @@ use claude_agent_mcp::transports::SseMcpServer;
 use claude_agent_mcp::manager::McpServer;
 
 async fn example() {
-    let server = SseMcpServer::new("test".to_string(), "http://localhost:8080/sse".to_string());
+    let server = SseMcpServer::new("test".to_string(), "http://localhost:8080/sse".to_string())
+        .expect("Failed to create server");
 
     match server.call_tool("process", serde_json::json!({})).await {
         Ok(result) => {

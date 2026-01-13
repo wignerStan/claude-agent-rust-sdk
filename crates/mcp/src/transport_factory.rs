@@ -91,9 +91,9 @@ fn create_sse_server(
     })?;
 
     let server = if let Some(timeout) = config.timeout_secs {
-        SseMcpServer::with_timeout(name, url, Duration::from_secs(timeout))
+        SseMcpServer::with_timeout(name, url, Duration::from_secs(timeout))?
     } else {
-        SseMcpServer::new(name, url)
+        SseMcpServer::new(name, url)?
     };
 
     Ok(Arc::new(server))
