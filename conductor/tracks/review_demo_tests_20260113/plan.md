@@ -1,11 +1,11 @@
 # Implementation Plan: Comprehensive Test and Review of Demo Applications
 
 ## Phase 1: Basic Demos Verification
-- [x] Task: Review and Execute Tests for `demos/hello-world` 3afac16
+- [ ] Task: Review and Execute Tests for `demos/hello-world` 3afac16
     - Sub-task: Analyze `main.rs` and `integration_test.rs`
     - Sub-task: Run `cargo test -p hello-world` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD (Red/Green/Refactor)
-- [ ] Task: Review and Execute Tests for `demos/hello-world-v2`
+- [x] Task: Review and Execute Tests for `demos/hello-world-v2` 9ec99fa
     - Sub-task: Analyze enhanced features in `main.rs` and `integration_test.rs`
     - Sub-task: Run `cargo test -p hello-world-v2` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD
