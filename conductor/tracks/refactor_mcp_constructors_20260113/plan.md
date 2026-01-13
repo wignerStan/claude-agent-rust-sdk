@@ -22,9 +22,10 @@
 - [x] Task: Conductor - User Manual Verification 'StdioMcpServer Consistency' (Protocol in workflow.md)
 
 ## Phase 5: API and Example Migration
-- [ ] Task: Update `crates/api/src/client.rs` and `query.rs` to handle `Result` from MCP server creation
-- [ ] Task: Update all examples in `crates/api/examples/`
-- [ ] Task: Update integration and E2E tests in `crates/api/tests/`
+- [x] Task: Update `crates/api/src/client.rs` and `query.rs` to handle `Result` from MCP server creation 61eeb20
+- [x] Task: Update all examples in `crates/api/examples/` 61eeb20
+- [x] Task: Update integration and E2E tests in `crates/api/tests/` 61eeb20
+- [ ] Task: Conductor - User Manual Verification 'API and Example Migration' (Protocol in workflow.md)
 - [ ] Task: Conductor - User Manual Verification 'API and Example Migration' (Protocol in workflow.md)
 
 ## Phase 6: Final Verification
