@@ -29,6 +29,9 @@ pub enum ClaudeAgentError {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    #[error("Initialization error: {0}")]
+    Initialization(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
