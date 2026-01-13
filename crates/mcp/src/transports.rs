@@ -25,10 +25,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{oneshot, Mutex};
 
-use claude_agent_types::ClaudeAgentError;
 use crate::manager::{McpServer, ToolInfo};
+use claude_agent_types::ClaudeAgentError;
 
-use claude_agent_transport::reader::MessageReader;
 use serde_json::{json, Value};
 
 /// Stdio-based MCP server (subprocess).
@@ -127,14 +126,14 @@ impl StdioMcpServer {
         Fut: Future<Output = Result<Value, ClaudeAgentError>> + Send + 'static,
     {
         let name = name.into();
-        let info = ToolInfo {
+        let _info = ToolInfo {
             name: name.clone(),
             description,
             input_schema,
         };
 
         // Box the handler to handle generic Future return type
-        let boxed_handler = Box::new(move |args| {
+        let _boxed_handler = Box::new(move |args| {
             let fut = handler(args);
             Box::pin(fut) as Pin<Box<dyn Future<Output = _> + Send>>
         });

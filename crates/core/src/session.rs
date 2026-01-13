@@ -101,9 +101,7 @@ impl SessionManager {
         let id = session.id.clone();
         self.sessions.insert(id.clone(), session);
         self.current_session_id = Some(id.clone());
-        self.sessions
-            .get(&id)
-            .expect("Session should exist after insert")
+        self.sessions.get(&id).unwrap()
     }
 
     /// Get the current session.

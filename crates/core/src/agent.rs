@@ -197,7 +197,10 @@ impl ClaudeAgent {
             self.transport = Some(Box::new(transport));
         }
 
-        let transport = self.transport.as_mut().expect("Transport should be set");
+        let transport = self
+            .transport
+            .as_mut()
+            .ok_or_else(|| ClaudeAgentError::Transport("Transport not initialized".to_string()))?;
         transport.connect().await?;
 
         // Create session

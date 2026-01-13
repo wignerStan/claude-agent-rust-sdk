@@ -130,9 +130,6 @@ pub struct SubprocessTransport {
     /// Broadcast channel for distributing messages to multiple subscribers (turns).
     inbox: Option<tokio::sync::broadcast::Sender<Result<serde_json::Value, ClaudeAgentError>>>,
 
-    /// Path to the CLI binary (cached after discovery).
-    cli_path: Option<PathBuf>,
-
     /// Abort handle for the background reader task.
     reader_abort_handle: Option<tokio::task::AbortHandle>,
 }
@@ -146,7 +143,6 @@ impl SubprocessTransport {
             process: None,
             stdin: None,
             inbox: None,
-            cli_path: None,
             reader_abort_handle: None,
         }
     }
@@ -517,8 +513,6 @@ mod tests {
 
     fn make_options() -> ClaudeAgentOptions {
         ClaudeAgentOptions {
-            // Point to a dummy path to avoid "CLI not found" errors during testing
-            cli_path: Some(PathBuf::from("/bin/ls")),
             ..Default::default()
         }
     }
