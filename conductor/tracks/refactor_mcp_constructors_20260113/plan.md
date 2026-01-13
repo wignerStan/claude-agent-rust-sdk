@@ -5,9 +5,9 @@
 - [x] Task: Conductor - User Manual Verification 'Core Type Update' (Protocol in workflow.md)
 
 ## Phase 2: SseMcpServer Refactor
-- [ ] Task: Write failing tests for `SseMcpServer` initialization failures (e.g., invalid timeout/config simulation if possible)
-- [ ] Task: Refactor `SseMcpServer::new` and `SseMcpServer::with_timeout` to return `Result<Self, ClaudeAgentError>`
-- [ ] Task: Update call sites in `crates/mcp/src/transport_factory.rs` and tests
+- [x] Task: Write failing tests for `SseMcpServer` initialization failures (e.g., invalid timeout/config simulation if possible) fc29e72
+- [x] Task: Refactor `SseMcpServer::new` and `SseMcpServer::with_timeout` to return `Result<Self, ClaudeAgentError>` fc29e72
+- [x] Task: Update call sites in `crates/mcp/src/transport_factory.rs` and tests fc29e72
 - [ ] Task: Conductor - User Manual Verification 'SseMcpServer Refactor' (Protocol in workflow.md)
 
 ## Phase 3: HttpMcpServer Refactor
