@@ -79,15 +79,16 @@ impl StdioMcpServer {
     /// ```rust,no_run
     /// use claude_agent_mcp::StdioMcpServer;
     ///
-    /// let server = StdioMcpServer::new("my_server".to_string(), "python".to_string(), vec!["-m".to_string()]);
+    /// let server = StdioMcpServer::new("my_server".to_string(), "python".to_string(), vec!["-m".to_string()])?;
+    /// # Ok::<(), claude_agent_types::ClaudeAgentError>(())
     /// ```
-    pub fn new(name: String, command: String, args: Vec<String>) -> Self {
-        Self {
+    pub fn new(name: String, command: String, args: Vec<String>) -> Result<Self, ClaudeAgentError> {
+        Ok(Self {
             name,
             command,
             args,
             transport: Arc::new(Mutex::new(None)),
-        }
+        })
     }
 
     /// Register a tool.

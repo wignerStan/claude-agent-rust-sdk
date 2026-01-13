@@ -74,12 +74,12 @@ use claude_agent_mcp::StdioMcpServer;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut manager = McpServerManager::new();
 
-    // Register a custom MCP server
+    // Create a new MCP server (using Stdio transport)
     let server = StdioMcpServer::new(
         "my_server".to_string(),
         "python".to_string(),
-        vec!["-m".to_string(), "my_mcp_server".to_string()]
-    );
+        vec!["main.py".to_string()]
+    ).expect("Failed to create server");
 
     manager.register(Box::new(server));
 

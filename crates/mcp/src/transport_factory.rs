@@ -62,7 +62,7 @@ fn create_stdio_server(
         ClaudeAgentError::Config("Stdio transport requires 'command' field".to_string())
     })?;
 
-    Ok(Arc::new(StdioMcpServer::new(name, command, config.args)))
+    Ok(Arc::new(StdioMcpServer::new(name, command, config.args)?))
 }
 
 fn create_http_server(
