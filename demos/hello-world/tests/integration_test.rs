@@ -2,9 +2,8 @@
 
 use claude_agent_api::ClaudeAgentClient;
 use claude_agent_demos_common::test_utils::{MockTransport, StreamCollector};
-use claude_agent_types::ClaudeAgentOptions;
 use claude_agent_types::message::{ContentBlock, Message};
-use futures::StreamExt;
+use claude_agent_types::ClaudeAgentOptions;
 
 #[tokio::test]
 async fn test_hello_world_basic_query() {
@@ -23,7 +22,7 @@ async fn test_hello_world_basic_query() {
 
     client.connect().await.unwrap();
 
-    let mut stream = client.query("Hello, Claude!").await.unwrap();
+    let stream = client.query("Hello, Claude!").await.unwrap();
 
     let messages = StreamCollector::collect(stream).await.unwrap();
 
@@ -66,7 +65,7 @@ async fn test_hello_world_with_options() {
 
     client.connect().await.unwrap();
 
-    let mut stream = client.query("Test").await.unwrap();
+    let stream = client.query("Test").await.unwrap();
 
     let messages = StreamCollector::collect(stream).await.unwrap();
 
@@ -86,10 +85,13 @@ async fn test_hello_world_multiple_messages() {
 
     let response2 = serde_json::json!({
         "type": "result",
-        "result": {
-            "type": "success",
-            "message": "Query completed"
-        }
+        "subtype": "success",
+        "duration_ms": 100,
+        "duration_api_ms": 50,
+        "is_error": false,
+        "num_turns": 1,
+        "session_id": "test-session",
+        "result": "Query completed"
     });
 
     let mock_transport = MockTransport::new(vec![response1, response2]);
@@ -98,7 +100,7 @@ async fn test_hello_world_multiple_messages() {
 
     client.connect().await.unwrap();
 
-    let mut stream = client.query("Test").await.unwrap();
+    let stream = client.query("Test").await.unwrap();
 
     let messages = StreamCollector::collect(stream).await.unwrap();
 
@@ -123,11 +125,12 @@ async fn test_hello_world_error_handling() {
 
     client.connect().await.unwrap();
 
-    let mut stream = client.query("Test").await.unwrap();
+    let stream = client.query("Test").await.unwrap();
 
-    let messages = StreamCollector::collect(stream).await;
+    let messages = StreamCollector::collect(stream).await.unwrap();
 
-    assert!(messages.is_err());
+    assert_eq!(messages.len(), 1);
+    assert!(matches!(messages[0], Message::Error(_)));
 }
 
 #[tokio::test]
@@ -147,7 +150,7 @@ async fn test_hello_world_disconnect() {
 
     client.connect().await.unwrap();
 
-    let mut stream = client.query("Test").await.unwrap();
+    let stream = client.query("Test").await.unwrap();
 
     let _ = StreamCollector::collect(stream).await.unwrap();
 
