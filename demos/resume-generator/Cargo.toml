@@ -13,3 +13,8 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+claude-agent-demos-common = { path = "../common", features = [] }
+tempfile = "3"
