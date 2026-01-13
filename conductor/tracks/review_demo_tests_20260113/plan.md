@@ -23,11 +23,11 @@
 - [x] Task: Conductor - User Manual Verification 'Agent-Specific Demos Verification' (Protocol in workflow.md) 3d6cf76
 
 ## Phase 3: Application Demos Verification
-- [ ] Task: Review and Execute Tests for `demos/resume-generator`
+- [x] Task: Review and Execute Tests for `demos/resume-generator` 1be0e3c
     - Sub-task: Analyze file generation logic and `integration_test.rs`
     - Sub-task: Run `cargo test -p resume-generator` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD
-- [ ] Task: Review and Execute Tests for `demos/simple-chatapp`
+- [x] Task: Review and Execute Tests for `demos/simple-chatapp` 1be0e3c
     - Sub-task: Analyze TUI/Interactive logic and `integration_test.rs`
     - Sub-task: Run `cargo test -p simple-chatapp` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD
