@@ -26,6 +26,9 @@ pub enum ClaudeAgentError {
     #[error("MCP error: {0}")]
     Mcp(String),
 
+    #[error("Configuration error: {0}")]
+    Config(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

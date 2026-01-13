@@ -6,16 +6,19 @@ A comprehensive Rust SDK for building agents that interact with Claude Code CLI 
 [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache-2.0-blue)](https://github.com/claude-agent-rust/claude-agent-rust/blob/main/LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.83+-orange)](https://www.rust-lang.org/)
 [![Build Status](https://img.shields.io/github/actions/workflows/CI/claude-agent-rust/claude-agent-rust/badge.svg)](https://github.com/claude-agent-rust/claude-agent-rust/actions)
+[![Security](https://img.shields.io/badge/Security-cargo--deny-green)](https://github.com/EmbarkStudios/cargo-deny)
+[![codecov](https://codecov.io/gh/claude-agent-rust/claude-agent-rust/branch/main/graph/badge.svg)](https://codecov.io/gh/claude-agent-rust/claude-agent-rust)
 
 ## Features
 
 - **Transport Layer**: Subprocess-based communication with Claude Code CLI
-- **MCP Server Management**: Centralized registry for managing multiple MCP servers
+- **MCP Server Management**: Multi-transport support (Stdio, HTTP, SSE) with rate limiting
+- **Security**: Secret handling with `secrecy`, constant-time comparisons with `subtle`
 - **Session Management**: Checkpoint-based conversation state tracking
 - **Control Protocol**: Bidirectional communication with Claude Code CLI
 - **Hook System**: Extensible callback system for custom behavior
-- **Permission Handling**: User approval system for file operations
-- **Streaming Message Parser**: Efficient JSON-RPC message parsing
+- **Testing**: Comprehensive property-based, unit, and E2E testing
+- **Streaming Parser**: Highly efficient JSON-RPC message parsing
 - **Type Definitions**: Comprehensive type system for all SDK components
 
 ## Installation

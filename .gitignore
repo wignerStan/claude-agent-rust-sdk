@@ -68,7 +68,6 @@ ssh
 *.pdb
 
 # Documentation
-*.md
 !README.md
 !CHANGELOG.md
 !ROADMAP.md
@@ -77,6 +76,8 @@ ssh
 !LICENSE*
 !CONFIGURATION.md
 !PRODUCTION_CONFIG.md
+!docs/
+!run_e2e.sh
 
 # Configuration files
 Cargo.lock
@@ -94,10 +95,10 @@ deny.toml
 azure-pipelines.yml
 
 # Large files and directories
+# Large files and directories
 demos/
-docs/
 test_summary.md
-run_e2e.sh
+*.log
 *.log
 *.tmp
 *.temp
@@ -122,6 +123,9 @@ env/
 # Rust specific
 **/*.rs.bk
 **/Cargo.lock
+
+#git worktree
+.worktrees/
 
 # Keep essential files
 !README.md

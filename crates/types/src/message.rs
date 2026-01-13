@@ -62,6 +62,24 @@ pub enum Message {
     Result(ResultMessage),
     #[serde(rename = "stream_event")]
     StreamEvent(StreamEvent),
+
+    // Streaming events
+    #[serde(rename = "message_start")]
+    MessageStart(MessageStart),
+    #[serde(rename = "content_block_start")]
+    ContentBlockStart(ContentBlockStart),
+    #[serde(rename = "content_block_delta")]
+    ContentBlockDelta(ContentBlockDelta),
+    #[serde(rename = "content_block_stop")]
+    ContentBlockStop(ContentBlockStop),
+    #[serde(rename = "message_delta")]
+    MessageDelta(MessageDelta),
+    #[serde(rename = "message_stop")]
+    MessageStop(MessageStop),
+    #[serde(rename = "ping")]
+    Ping(Ping),
+    #[serde(rename = "error")]
+    Error(ErrorEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,4 +238,81 @@ pub struct StreamEvent {
     pub event: serde_json::Value,
     #[serde(rename = "parent_tool_use_id", skip_serializing_if = "Option::is_none")]
     pub parent_tool_use_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageStart {
+    pub message: AssistantMessage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentBlockStart {
+    pub index: u32,
+    pub content_block: ContentBlock,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentBlockDelta {
+    pub index: u32,
+    pub delta: Delta,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Delta {
+    TextDelta {
+        text: String,
+    },
+    InputJsonDelta {
+        partial_json: String,
+    },
+    ToolUse {
+        id: Option<String>,
+        name: Option<String>,
+        input: Option<serde_json::Value>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentBlockStop {
+    pub index: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageDelta {
+    pub delta: MessageDeltaBody,
+    pub usage: Option<Usage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageDeltaBody {
+    pub stop_reason: Option<String>,
+    pub stop_sequence: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageStop;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ping {
+    #[serde(rename = "type")]
+    pub event_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorEvent {
+    pub error: ErrorBody,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorBody {
+    #[serde(rename = "type")]
+    pub error_type: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Usage {
+    pub input_tokens: Option<u32>,
+    pub output_tokens: u32,
 }

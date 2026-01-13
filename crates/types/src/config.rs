@@ -24,6 +24,56 @@ impl std::fmt::Display for PermissionMode {
     }
 }
 
+/// Transport type for MCP server connections.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum McpTransportType {
+    /// Use stdio-based transport (subprocess)
+    #[default]
+    Stdio,
+    /// Use HTTP-based transport
+    Http,
+    /// Use SSE-based transport
+    Sse,
+    /// Auto-detect transport (try HTTP, fallback to stdio)
+    Auto,
+}
+
+impl std::fmt::Display for McpTransportType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stdio => write!(f, "stdio"),
+            Self::Http => write!(f, "http"),
+            Self::Sse => write!(f, "sse"),
+            Self::Auto => write!(f, "auto"),
+        }
+    }
+}
+
+/// Configuration for an MCP server connection.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerConfig {
+    /// Transport type to use
+    #[serde(default)]
+    pub transport: McpTransportType,
+    /// Command to execute (for stdio transport)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Arguments for the command (for stdio transport)
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// URL for HTTP/SSE transport
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Request timeout in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
+    /// Environment variables for subprocess
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SettingSource {

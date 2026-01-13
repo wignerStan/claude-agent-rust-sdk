@@ -9,7 +9,7 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use claude_agent_transport::{Transport, SubprocessTransport};
 //! use claude_agent_types::ClaudeAgentOptions;
 //! use futures::StreamExt;

@@ -96,3 +96,51 @@ async fn test_client_query_single_prompt() {
     let sent = sent_data.lock().unwrap();
     assert!(!sent.is_empty());
 }
+
+#[tokio::test]
+async fn test_client_control_methods() {
+    let mock_transport = MockTransport::new(vec![]); // No responses needed for simple writes
+    let sent_data = mock_transport.sent_data.clone();
+
+    let mut client = ClaudeAgentClient::new(None);
+    client.set_transport(Box::new(mock_transport));
+    client.connect().await.expect("Connect failed");
+
+    // Test Interrupt
+    client.interrupt().await.expect("Interrupt failed");
+    {
+        let sent = sent_data.lock().unwrap();
+        let last_msg = sent.last().unwrap();
+        let json: serde_json::Value = serde_json::from_str(last_msg).unwrap();
+        assert_eq!(json["type"], "control_request");
+        assert_eq!(json["request"]["subtype"], "interrupt");
+    }
+
+    // Test Set Model
+    client
+        .set_model(Some("claude-test"))
+        .await
+        .expect("Set model failed");
+    {
+        let sent = sent_data.lock().unwrap();
+        let last_msg = sent.last().unwrap();
+        let json: serde_json::Value = serde_json::from_str(last_msg).unwrap();
+        assert_eq!(json["type"], "control_request");
+        assert_eq!(json["request"]["subtype"], "set_model");
+        assert_eq!(json["request"]["model"], "claude-test");
+    }
+
+    // Test Set Permission Mode
+    client
+        .set_permission_mode("plan")
+        .await
+        .expect("Set permission mode failed");
+    {
+        let sent = sent_data.lock().unwrap();
+        let last_msg = sent.last().unwrap();
+        let json: serde_json::Value = serde_json::from_str(last_msg).unwrap();
+        assert_eq!(json["type"], "control_request");
+        assert_eq!(json["request"]["subtype"], "set_permission_mode");
+        assert_eq!(json["request"]["mode"], "plan");
+    }
+}

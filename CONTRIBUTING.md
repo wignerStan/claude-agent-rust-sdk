@@ -156,6 +156,48 @@ If you need help:
 3. Read [ROADMAP.md](ROADMAP.md) - planned features and milestones
 4. Start a [discussion](../../discussions) - for questions and ideas
 
+## Security Policy
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please **do not** open a public issue. Instead:
+
+1. Email security concerns privately to the maintainers
+2. Provide a detailed description of the vulnerability
+3. Include steps to reproduce if possible
+4. Allow reasonable time for a fix before public disclosure
+
+### Security Requirements for Contributions
+
+All contributions must follow these security practices:
+
+- **Use `SecretString`** for sensitive data (API keys, tokens, credentials)
+- **Use constant-time comparison** (`subtle::ConstantTimeEq`) for secrets
+- **Validate all external input** before processing
+- **Never log sensitive data** - use redaction for secrets
+- **Rate limit** operations that could be abused
+
+### Security Checks
+
+We use automated security tools in CI:
+
+```bash
+# Check for security advisories
+cargo deny check advisories
+
+# Check for banned dependencies
+cargo deny check bans
+
+# Run security audit
+cargo audit
+```
+
+### Dependencies
+
+- All dependencies are checked against RustSec advisory database
+- Only permissive licenses (MIT, Apache-2.0, BSD) are allowed
+- Deprecated or unmaintained crates are prohibited
+
 ## License
 
 By contributing to this project, you agree that your contributions will be licensed under the same terms as the project (MIT OR Apache-2.0).

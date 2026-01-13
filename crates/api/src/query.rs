@@ -22,7 +22,7 @@ use claude_agent_types::{ClaudeAgentError, ClaudeAgentOptions, Message};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use claude_agent_api::query;
 /// use claude_agent_types::ClaudeAgentOptions;
 /// use futures::StreamExt;

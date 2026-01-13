@@ -1,87 +1,57 @@
 # Cargo Deny Configuration
+# https://embarkstudios.github.io/cargo-deny/
 
-# Advisory Database
+# This section is considered when running `cargo deny check advisories`
 [advisories]
-# Use GitHub Advisory Database
-db-url = "https://github.com/rustsec/advisory-db"
+version = 2
 db-path = "~/.cargo/advisory-db"
+url = "https://github.com/rustsec/advisory-db"
+ignore = []
 
-# Update frequency (in days)
-fetch-update-interval = 7
-
-# Licenses
+# This section is considered when running `cargo deny check licenses`
 [licenses]
-# Allow permissive licenses
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
     "Unicode-DFS-2016",
-]
-
-# Deny copyleft licenses for production
-deny = [
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-3.0",
-    "LGPL-2.0",
-    "LGPL-3.0",
-]
-
-# Allow weak copyleft licenses with strong copyleft exception
-allow-weak = [
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "BSL-1.0",
     "MPL-2.0",
-    "CDDL-1.0",
 ]
+confidence-threshold = 0.8
 
-# Bans
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+# This section is considered when running `cargo deny check bans`
 [bans]
-# Deny specific crate versions with known vulnerabilities
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+
 deny = [
-    # Security vulnerabilities
-    { name = "openssl-sys", version = "<0.10.0" },
-    { name = "openssl", version = "<0.10.0" },
-    { name = "libssh2-sys", version = "<1.8.0" },
-    { name = "curl-sys", version = "<7.88.0" },
-    { name = "winapi", version = "<0.5.0" },
-
-    # Deprecated or unmaintained crates
-    { name = "rustc-serialize", version = "*" },
-    { name = "lazy_static", version = "<1.4.0" },
-
-    # Duplicate crates
-    { name = "adler", version = "*" },
-    { name = "time", version = "*" },
+    # Deprecated crates
+    { name = "rustc-serialize", wrappers = [] },
 ]
 
-# Sources
+skip = []
+skip-tree = []
+
+# This section is considered when running `cargo deny check sources`
 [sources]
-# Allow crates from specific registries
-allow-registry = ["https://github.com", "https://gitlab.com"]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
 
-# Deny crates from insecure registries
-deny-registry = ["https://crates.io"]
-
-# Output Format
-[output]
-# Use human-readable output
-format = "human"
-
-# Show detailed information
-verbose = 4
-
-# Show graph of dependencies
-graph = true
-
-# Show duplicate dependencies
-duplicates = "tree"
-
-# Features
-[features]
-# Enable all deny features
-all-features = true
-
-# Allow individual feature control
-allow-wildcard-paths = true
+[sources.allow-org]
+github = []

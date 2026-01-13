@@ -27,12 +27,18 @@ Welcome to the comprehensive documentation for the Claude Agent Rust SDK. This S
 - [Structured Outputs](guides/structured_output.md): Extracting data with JSON Schema.
 - [Plugins](guides/plugins.md): Extending the agent ecosystem.
 
+### MCP Transports
+- [Transport Selection Guide](guides/transport-selection.md): Choosing the right transport.
+- [HTTP Transport](guides/http-transport.md): HTTP-based JSON-RPC connections.
+- [SSE Transport](guides/sse-transport.md): Server-Sent Events transport.
+
 ### Safety & Advanced Features
 - [File Checkpointing & Rewind](guides/file_checkpointing.md): Safe undos of agent actions.
 
 ## Integration & Deployment
 - [Hosting the SDK](#): Coming soon.
 - [Secure Deployment](#): Best practices for production.
+- [Testing Guide](guides/testing.md): Comprehensive testing strategy.
 
 ## Reference
 - [API Documentation](https://docs.rs/claude-agent-api): High-level Rust API reference.

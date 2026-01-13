@@ -7,18 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Integrated `secrecy` crate for handling sensitive API keys
+- Integrated `subtle` crate for constant-time comparisons
+- Added `governor` for rate limiting MCP tool calls
+- Implemented `create_mcp_server` factory in `claude-agent-mcp` supporting Stdio, HTTP, and SSE
+- Added comprehensive property-based testing using `proptest`
+- Added performance benchmarks using `criterion`
+- Added `cargo-deny` security audit to CI/CD pipeline
+- Added End-to-End integration tests (`run_e2e.sh`)
+- Created comprehensive Testing Guide
+
 ### Fixed
-- Fixed critical compilation errors in `transports.rs` (missing imports and unused import)
-- Fixed borrow checker error in `session.rs` (cloned `id` before move)
-- Removed dead code (`cli_path` field) from `subprocess.rs`
-- Removed deprecated `HttpMcpServer` and `SseMcpServer` exports from `lib.rs`
-- Replaced excessive `.expect()` call with proper error handling in `agent.rs`
-- Fixed `clippy.toml` configuration syntax errors
-- Fixed all formatting issues with `cargo fmt`
-- Prefixed unused variables with underscore to suppress clippy warnings
-- Simplified `.pre-commit-config.yaml` to avoid file argument issues
-- Fixed `deny.toml` syntax errors (removed markdown code blocks)
-- Fixed pre-commit hook configuration (changed `language: system` to use `bash -c` wrapper)
+- Fixed critical compilation errors in `transports.rs`
+- Fixed borrow checker errors in unit and doc tests
+- Resolved workspace member dependency inheritance issues
+- Corrected nested workspace root conflict in `demos`
+- Fixed `clippy` and `fmt` issues across workspace
 
 ### Changed
 - Improved error handling throughout the codebase

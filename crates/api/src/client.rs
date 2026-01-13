@@ -12,13 +12,13 @@ use claude_agent_types::{ClaudeAgentError, ClaudeAgentOptions, Message};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust,no_run
 /// use claude_agent_api::ClaudeAgentClient;
 /// use claude_agent_types::ClaudeAgentOptions;
 /// use futures::StreamExt;
 ///
 /// #[tokio::main]
-/// async fn main() {
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let mut client = ClaudeAgentClient::new(None);
 ///     client.connect().await.unwrap();
 ///
@@ -27,7 +27,10 @@ use claude_agent_types::{ClaudeAgentError, ClaudeAgentOptions, Message};
 ///         println!("{:?}", result);
 ///     }
 ///
-///     client.disconnect().await.unwrap();
+///     // Explicitly drop stream to release mutable borrow on client
+///     drop(stream);
+///     client.disconnect().await?;
+///     Ok(())
 /// }
 /// ```
 pub struct ClaudeAgentClient {

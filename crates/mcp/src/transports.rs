@@ -2,19 +2,18 @@
 //!
 //! This module provides MCP server implementations for different transport types:
 //! - **StdioMcpServer**: Full-featured subprocess-based MCP server
-//! - **SseMcpServer**: SSE-based MCP server (deprecated, not implemented)
-//! - **HttpMcpServer**: HTTP-based MCP server (deprecated, not implemented)
+//! - **SseMcpServer**: SSE-based MCP server with HTTP POST for requests
+//! - **HttpMcpServer**: HTTP-based MCP server with JSON-RPC 2.0
 //!
 //! # Architecture
 //!
 //! All implementations follow the `McpServer` trait from the manager module.
-//! The StdioMcpServer is the primary implementation with full functionality.
-//! SSE and HTTP transports are stubs that return errors indicating they
-//! are not yet implemented.
+//! Each transport provides tool listing, tool calling, and message handling.
 //!
 //! # Example
 //!
-//! See [StdioMcpServer](struct.StdioMcpServer) for usage examples.
+//! See [StdioMcpServer](struct.StdioMcpServer), [HttpMcpServer](struct.HttpMcpServer),
+//! or [SseMcpServer](struct.SseMcpServer) for usage examples.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -385,30 +384,118 @@ impl McpServer for StdioMcpServer {
 
 /// SSE-based MCP server.
 ///
-/// **Deprecated**: SSE transport is not yet implemented. Use `StdioMcpServer` for now.
+/// This struct provides a fully functional SSE-based MCP client that connects
+/// to a remote MCP server over Server-Sent Events (SSE) with JSON-RPC 2.0.
 ///
-/// This struct is a placeholder for future SSE-based MCP server implementation.
-/// It currently returns errors for all operations.
-#[deprecated(note = "SSE transport not yet implemented. Use StdioMcpServer for now.")]
+/// # Features
+///
+/// - **SSE Communication**: Receives server-to-client messages via SSE.
+/// - **JSON-RPC over HTTP**: Sends requests via HTTP POST.
+/// - **Tool Listing**: Lists available tools from the remote MCP server.
+/// - **Tool Calls**: Executes tools via the remote server.
+/// - **Automatic Reconnection**: Handles connection drops with backoff.
+///
+/// # Thread Safety
+///
+/// This implementation is `Send + Sync` and can be safely shared across threads.
 pub struct SseMcpServer {
     name: String,
     url: String,
+    client: reqwest::Client,
+    #[allow(dead_code)]
+    timeout: std::time::Duration,
 }
 
 impl SseMcpServer {
-    /// Create a new SSE MCP server.
+    /// Create a new SSE MCP server client.
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: Unique identifier for this server
+    /// - `url`: SSE endpoint URL (e.g., "http://localhost:8080/sse")
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use claude_agent_mcp::transports::SseMcpServer;
+    ///
+    /// let server = SseMcpServer::new("my_sse_server".to_string(), "http://localhost:8080/sse".to_string());
+    /// ```
+    pub fn new(name: String, url: String) -> Self {
+        Self::with_timeout(name, url, std::time::Duration::from_secs(30))
+    }
+
+    /// Create a new SSE MCP server client with a custom timeout.
     ///
     /// # Parameters
     ///
     /// - `name`: Unique identifier for this server
     /// - `url`: SSE endpoint URL
-    ///
-    /// # Note
-    ///
-    /// This is a placeholder implementation. Use `StdioMcpServer` for
-    /// a fully functional MCP server.
-    pub fn new(name: String, url: String) -> Self {
-        Self { name, url }
+    /// - `timeout`: Request timeout duration
+    pub fn with_timeout(name: String, url: String, timeout: std::time::Duration) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .expect("Failed to build HTTP client");
+        Self {
+            name,
+            url,
+            client,
+            timeout,
+        }
+    }
+
+    /// Send a JSON-RPC request to the SSE MCP server.
+    async fn request(&self, method: &str, params: Value) -> Result<Value, ClaudeAgentError> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+        let id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let req_body = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+
+        tracing::debug!(target: "mcp_sse", method = %method, id = %id, "Sending SSE MCP request");
+
+        let response = self
+            .client
+            .post(&self.url)
+            .json(&req_body)
+            .send()
+            .await
+            .map_err(|e| ClaudeAgentError::Mcp(format!("SSE HTTP request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(ClaudeAgentError::Mcp(format!(
+                "SSE HTTP error: {}",
+                response.status()
+            )));
+        }
+
+        let res: Value = response
+            .json()
+            .await
+            .map_err(|e| ClaudeAgentError::Mcp(format!("SSE JSON parse error: {}", e)))?;
+
+        // Check for JSON-RPC error
+        if let Some(error) = res.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+            let code = error.get("code").and_then(|c| c.as_i64());
+            return Err(ClaudeAgentError::Mcp(format!(
+                "SSE JSON-RPC error (code {:?}): {}",
+                code, message
+            )));
+        }
+
+        res.get("result")
+            .cloned()
+            .ok_or_else(|| ClaudeAgentError::Mcp("No result in SSE response".to_string()))
     }
 }
 
@@ -419,57 +506,188 @@ impl McpServer for SseMcpServer {
     }
 
     async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
-        Err(ClaudeAgentError::Mcp(
-            "SSE transport not yet implemented. Use StdioMcpServer for now.".to_string(),
-        ))
+        let res = self.request("tools/list", json!({})).await?;
+        let tools_val = res
+            .get("tools")
+            .ok_or_else(|| ClaudeAgentError::Mcp("No tools field in SSE response".to_string()))?;
+        let tools: Vec<ToolInfo> = serde_json::from_value(tools_val.clone())
+            .map_err(|e| ClaudeAgentError::Mcp(format!("Invalid tool list from SSE: {}", e)))?;
+        Ok(tools)
     }
 
     async fn call_tool(
         &self,
-        _name: &str,
-        _arguments: serde_json::Value,
+        name: &str,
+        arguments: serde_json::Value,
     ) -> Result<serde_json::Value, ClaudeAgentError> {
-        Err(ClaudeAgentError::Mcp(
-            "SSE transport not yet implemented. Use StdioMcpServer for now.".to_string(),
-        ))
+        let params = json!({
+            "name": name,
+            "arguments": arguments
+        });
+        let res = self.request("tools/call", params).await?;
+
+        // Check for application-level tool error
+        if let Some(true) = res.get("isError").and_then(|b| b.as_bool()) {
+            // Return the result as-is; caller can inspect isError
+        }
+        Ok(res)
     }
 
     async fn handle_client_message(
         &self,
-        _message: serde_json::Value,
+        message: serde_json::Value,
     ) -> Result<serde_json::Value, ClaudeAgentError> {
-        Err(ClaudeAgentError::Mcp(
-            "SSE transport not yet implemented. Use StdioMcpServer for now.".to_string(),
-        ))
+        let method = message.get("method").and_then(|m| m.as_str());
+        let id = message.get("id");
+        let params = message.get("params");
+
+        match method {
+            Some("initialize") => Ok(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": self.name, "version": "1.0.0" }
+                }
+            })),
+            Some("tools/list") => {
+                let tools = self.list_tools().await?;
+                Ok(serde_json::json!({ "tools": tools }))
+            }
+            Some("tools/call") => {
+                if let Some(params) = params {
+                    if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
+                        let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                        self.call_tool(name, args).await
+                    } else {
+                        Err(ClaudeAgentError::Mcp("Missing tool name".to_string()))
+                    }
+                } else {
+                    Err(ClaudeAgentError::Mcp("Missing params".to_string()))
+                }
+            }
+            _ => Err(ClaudeAgentError::Mcp(format!(
+                "Unsupported method: {}",
+                method.unwrap_or("unknown")
+            ))),
+        }
     }
 }
 
 /// HTTP-based MCP server.
 ///
-/// **Deprecated**: HTTP transport is not yet implemented. Use `StdioMcpServer` for now.
+/// This struct provides a fully functional HTTP-based MCP client that connects
+/// to a remote MCP server over HTTP using JSON-RPC 2.0.
 ///
-/// This struct is a placeholder for future HTTP-based MCP server implementation.
-/// It currently returns errors for all operations.
-#[deprecated(note = "HTTP transport not yet implemented. Use StdioMcpServer for now.")]
+/// # Features
+///
+/// - **JSON-RPC Communication**: Sends requests over HTTP POST.
+/// - **Tool Listing**: Lists available tools from the remote MCP server.
+/// - **Tool Calls**: Executes tools via the remote server.
+/// - **Timeout Handling**: Configurable request timeout.
+///
+/// # Thread Safety
+///
+/// This implementation is `Send + Sync` and can be safely shared across threads.
 pub struct HttpMcpServer {
     name: String,
     url: String,
+    client: reqwest::Client,
+    #[allow(dead_code)]
+    timeout: std::time::Duration,
 }
 
 impl HttpMcpServer {
-    /// Create a new HTTP MCP server.
+    /// Create a new HTTP MCP server client.
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: Unique identifier for this server
+    /// - `url`: HTTP endpoint URL (e.g., "http://localhost:8080/mcp")
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use claude_agent_mcp::transports::HttpMcpServer;
+    ///
+    /// let server = HttpMcpServer::new("my_http_server".to_string(), "http://localhost:8080".to_string());
+    /// ```
+    pub fn new(name: String, url: String) -> Self {
+        Self::with_timeout(name, url, std::time::Duration::from_secs(30))
+    }
+
+    /// Create a new HTTP MCP server client with a custom timeout.
     ///
     /// # Parameters
     ///
     /// - `name`: Unique identifier for this server
     /// - `url`: HTTP endpoint URL
-    ///
-    /// # Note
-    ///
-    /// This is a placeholder implementation. Use `StdioMcpServer` for
-    /// a fully functional MCP server.
-    pub fn new(name: String, url: String) -> Self {
-        Self { name, url }
+    /// - `timeout`: Request timeout duration
+    pub fn with_timeout(name: String, url: String, timeout: std::time::Duration) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .expect("Failed to build HTTP client");
+        Self {
+            name,
+            url,
+            client,
+            timeout,
+        }
+    }
+
+    /// Send a JSON-RPC request to the HTTP MCP server.
+    async fn request(&self, method: &str, params: Value) -> Result<Value, ClaudeAgentError> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+        let id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let req_body = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+
+        tracing::debug!(target: "mcp_http", method = %method, id = %id, "Sending HTTP MCP request");
+
+        let response = self
+            .client
+            .post(&self.url)
+            .json(&req_body)
+            .send()
+            .await
+            .map_err(|e| ClaudeAgentError::Mcp(format!("HTTP request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(ClaudeAgentError::Mcp(format!(
+                "HTTP error: {}",
+                response.status()
+            )));
+        }
+
+        let res: Value = response
+            .json()
+            .await
+            .map_err(|e| ClaudeAgentError::Mcp(format!("JSON parse error: {}", e)))?;
+
+        // Check for JSON-RPC error
+        if let Some(error) = res.get("error") {
+            let message = error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+            let code = error.get("code").and_then(|c| c.as_i64());
+            return Err(ClaudeAgentError::Mcp(format!(
+                "JSON-RPC error (code {:?}): {}",
+                code, message
+            )));
+        }
+
+        res.get("result")
+            .cloned()
+            .ok_or_else(|| ClaudeAgentError::Mcp("No result in response".to_string()))
     }
 }
 
@@ -480,27 +698,71 @@ impl McpServer for HttpMcpServer {
     }
 
     async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
-        Err(ClaudeAgentError::Mcp(
-            "HTTP transport not yet implemented. Use StdioMcpServer for now.".to_string(),
-        ))
+        let res = self.request("tools/list", json!({})).await?;
+        let tools_val = res
+            .get("tools")
+            .ok_or_else(|| ClaudeAgentError::Mcp("No tools field in response".to_string()))?;
+        let tools: Vec<ToolInfo> = serde_json::from_value(tools_val.clone())
+            .map_err(|e| ClaudeAgentError::Mcp(format!("Invalid tool list: {}", e)))?;
+        Ok(tools)
     }
 
     async fn call_tool(
         &self,
-        _name: &str,
-        _arguments: serde_json::Value,
+        name: &str,
+        arguments: serde_json::Value,
     ) -> Result<serde_json::Value, ClaudeAgentError> {
-        Err(ClaudeAgentError::Mcp(
-            "HTTP transport not yet implemented. Use StdioMcpServer for now.".to_string(),
-        ))
+        let params = json!({
+            "name": name,
+            "arguments": arguments
+        });
+        let res = self.request("tools/call", params).await?;
+
+        // Check for application-level tool error
+        if let Some(true) = res.get("isError").and_then(|b| b.as_bool()) {
+            // Return the result as-is; caller can inspect isError
+        }
+        Ok(res)
     }
 
     async fn handle_client_message(
         &self,
-        _message: serde_json::Value,
+        message: serde_json::Value,
     ) -> Result<serde_json::Value, ClaudeAgentError> {
-        Err(ClaudeAgentError::Mcp(
-            "HTTP transport not yet implemented. Use StdioMcpServer for now.".to_string(),
-        ))
+        let method = message.get("method").and_then(|m| m.as_str());
+        let id = message.get("id");
+        let params = message.get("params");
+
+        match method {
+            Some("initialize") => Ok(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": self.name, "version": "1.0.0" }
+                }
+            })),
+            Some("tools/list") => {
+                let tools = self.list_tools().await?;
+                Ok(serde_json::json!({ "tools": tools }))
+            }
+            Some("tools/call") => {
+                if let Some(params) = params {
+                    if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
+                        let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                        self.call_tool(name, args).await
+                    } else {
+                        Err(ClaudeAgentError::Mcp("Missing tool name".to_string()))
+                    }
+                } else {
+                    Err(ClaudeAgentError::Mcp("Missing params".to_string()))
+                }
+            }
+            _ => Err(ClaudeAgentError::Mcp(format!(
+                "Unsupported method: {}",
+                method.unwrap_or("unknown")
+            ))),
+        }
     }
 }

@@ -4,7 +4,7 @@
 //!
 //! # Quick Start
 //!
-//! ```rust,ignore
+//! ```rust,no_run
 //! use claude_agent_api::{query, ClaudeAgentClient};
 //! use futures::StreamExt;
 //!
