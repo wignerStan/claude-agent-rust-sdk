@@ -11,7 +11,7 @@
     - Sub-task: Fix any identified bugs using TDD
 - [x] Task: Conductor - User Manual Verification 'Basic Demos Verification' (Protocol in workflow.md) d25d792
 
-## Phase 2: Agent-Specific Demos Verification
+## Phase 2: Agent-Specific Demos Verification [checkpoint: 3d6cf76]
 - [x] Task: Review and Execute Tests for `demos/email-agent` 9730da7
     - Sub-task: Analyze IMAP/Mail handling logic and `integration_test.rs`
     - Sub-task: Run `cargo test -p email-agent` and verify E2E behavior
@@ -20,7 +20,7 @@
     - Sub-task: Analyze multi-prompt orchestration and `integration_test.rs`
     - Sub-task: Run `cargo test -p research-agent` and verify E2E behavior
     - Sub-task: Fix any identified bugs using TDD
-- [ ] Task: Conductor - User Manual Verification 'Agent-Specific Demos Verification' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Agent-Specific Demos Verification' (Protocol in workflow.md) 3d6cf76
 
 ## Phase 3: Application Demos Verification
 - [ ] Task: Review and Execute Tests for `demos/resume-generator`
