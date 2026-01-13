@@ -21,12 +21,12 @@ use claude_agent_types::{ClaudeAgentError, ClaudeAgentOptions, Message};
 /// async fn main() {
 ///     let mut client = ClaudeAgentClient::new(None);
 ///     client.connect().await.unwrap();
-///     
+///
 ///     let mut stream = client.query("Hello, Claude!").await.unwrap();
 ///     while let Some(result) = stream.next().await {
 ///         println!("{:?}", result);
 ///     }
-///     
+///
 ///     client.disconnect().await.unwrap();
 /// }
 /// ```

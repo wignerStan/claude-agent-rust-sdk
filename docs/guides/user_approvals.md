@@ -16,7 +16,7 @@ use claude_agent_types::ToolPermissionResult;
 
 async fn run_agent() {
     let mut client = ClaudeAgentClient::default();
-    
+
     // Automatic approval based on tool type
     client.on_test_hook(|event| {
         // Log event for transparency

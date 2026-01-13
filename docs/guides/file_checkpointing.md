@@ -29,7 +29,7 @@ async fn run_and_maybe_undo() {
     // 1. Get a checkpoint ID
     let mut checkpoint_id = String::new();
     client.query("Refactor main.rs").await.unwrap();
-    
+
     // In practice, capture the uuid from the UserMessage in the stream
     // checkpoint_id = ...
 

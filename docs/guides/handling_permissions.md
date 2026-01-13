@@ -32,13 +32,13 @@ use claude_agent_types::{ToolPermissionResult, ToolPermissionContext};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = ClaudeAgentClient::default();
-    
+
     // Register a custom permission handler
     client.on_permission_request(|ctx| {
         Box::pin(async move {
             println!("Agent wants to use tool: {}", ctx.tool_name);
             println!("Arguments: {}", ctx.arguments);
-            
+
             // Return logic (e.g., prompt user, check whitelist)
             if ctx.tool_name == "read_file" {
                 ToolPermissionResult::Approve

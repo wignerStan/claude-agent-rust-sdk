@@ -13,7 +13,7 @@ use claude_agent_types::Message;
 if let Message::Result(res) = message {
     println!("Total Cost: ${:.4}", res.total_cost_usd.unwrap_or(0.0));
     println!("Num Turns: {}", res.num_turns);
-    
+
     if let Some(usage) = res.usage {
         println!("Input tokens: {:?}", usage.get("input_tokens"));
         println!("Output tokens: {:?}", usage.get("output_tokens"));

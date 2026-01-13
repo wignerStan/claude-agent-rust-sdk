@@ -4,7 +4,7 @@ The Claude Agent Rust SDK provides a streaming API for receiving real-time respo
 
 ## Using the Streaming API
 
-When you call `ClaudeAgentClient::query()`, it returns a `Result<impl Stream<Item = Result<Message, ClaudeAgentError>>, ClaudeAgentError>`. 
+When you call `ClaudeAgentClient::query()`, it returns a `Result<impl Stream<Item = Result<Message, ClaudeAgentError>>, ClaudeAgentError>`.
 
 ### Basic Example
 
