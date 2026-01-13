@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use futures::stream::{self, BoxStream};
+use futures::stream::{self, BoxStream, StreamExt};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -11,14 +11,17 @@ use claude_agent_types::{ClaudeAgentError, ClaudeAgentOptions};
 // Mock Transport
 struct MockTransport {
     pub sent_data: Arc<Mutex<Vec<String>>>,
-    pub responses: Vec<serde_json::Value>,
+    pub initial_responses: Vec<serde_json::Value>,
+    pub tx: tokio::sync::broadcast::Sender<Result<serde_json::Value, ClaudeAgentError>>,
 }
 
 impl MockTransport {
     fn new(responses: Vec<serde_json::Value>) -> Self {
+        let (tx, _) = tokio::sync::broadcast::channel(100);
         Self {
             sent_data: Arc::new(Mutex::new(Vec::new())),
-            responses,
+            initial_responses: responses,
+            tx,
         }
     }
 }
@@ -31,13 +34,38 @@ impl Transport for MockTransport {
 
     async fn write(&self, data: &str) -> Result<(), ClaudeAgentError> {
         self.sent_data.lock().unwrap().push(data.to_string());
+
+        // Auto-reply to control requests
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
+            if val.get("type").and_then(|s| s.as_str()) == Some("control_request") {
+                let req_id = val.get("request_id").and_then(|s| s.as_str()).unwrap_or("");
+                let resp = json!({
+                    "type": "control_response",
+                    "request_id": req_id,
+                    "success": true,
+                    "response": {}
+                });
+                let _ = self.tx.send(Ok(resp));
+            }
+        }
         Ok(())
     }
 
     async fn read_messages(&self) -> BoxStream<'_, Result<serde_json::Value, ClaudeAgentError>> {
-        // Clone responses to return a stream
-        let responses = self.responses.clone();
-        Box::pin(stream::iter(responses.into_iter().map(Ok)))
+        let initial = stream::iter(self.initial_responses.clone().into_iter().map(Ok));
+
+        let rx = self.tx.subscribe();
+        let broadcast = stream::unfold(rx, |mut rx| async move {
+            loop {
+                match rx.recv().await {
+                    Ok(res) => return Some((res, rx)),
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+                    Err(_) => continue, // Lagged
+                }
+            }
+        });
+
+        Box::pin(initial.chain(broadcast))
     }
 
     async fn close(&mut self) -> Result<(), ClaudeAgentError> {
@@ -70,9 +98,14 @@ async fn test_client_query_single_prompt() {
     let mut stream = client.query("What is 2+2?").await.expect("Query failed");
 
     let mut messages = Vec::new();
+    #[allow(clippy::never_loop)]
     while let Some(result) = stream.next().await {
         match result {
-            Ok(msg) => messages.push(msg),
+            Ok(msg) => {
+                messages.push(msg);
+                // Break after receiving the expected message since the stream stays open
+                break;
+            }
             Err(e) => panic!("Stream error: {}", e),
         }
     }

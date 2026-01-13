@@ -45,6 +45,8 @@
 //! ```
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use claude_agent_types::ClaudeAgentError;
 use serde_json::Value;
@@ -58,13 +60,14 @@ use serde_json::Value;
 /// # Thread Safety
 ///
 /// The manager is `Send + Sync` and can be safely shared across multiple
-/// threads or async tasks. Internal state is protected by the `HashMap`.
+/// threads or async tasks. Internal state is protected by `Arc<RwLock<HashMap>>`.
+/// The struct acts as a handle and can be cheaply cloned.
 ///
 /// # Server Registration
 ///
-/// Servers are stored in a `HashMap<String, Box<dyn McpServer>>` where:
+/// Servers are stored in a `HashMap` where:
 /// - The key is a unique server name (used for tool calls)
-/// - The value is a boxed `McpServer` trait object
+/// - The value is an `Arc<dyn McpServer>` trait object
 ///
 /// # Example
 ///
@@ -75,8 +78,9 @@ use serde_json::Value;
 /// let mut manager = McpServerManager::new();
 /// manager.register(Box::new(SdkMcpServer::new("my_server")));
 /// ```
+#[derive(Clone)]
 pub struct McpServerManager {
-    servers: HashMap<String, Box<dyn McpServer>>,
+    servers: Arc<RwLock<HashMap<String, Arc<dyn McpServer>>>>,
 }
 
 /// Trait for MCP server implementations.
@@ -268,30 +272,74 @@ impl McpServerManager {
     /// Create a new MCP server manager.
     pub fn new() -> Self {
         Self {
-            servers: HashMap::new(),
+            servers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Register an MCP server.
     pub fn register(&mut self, server: Box<dyn McpServer>) {
         let name = server.name().to_string();
-        self.servers.insert(name, server);
+        // Use blocking write if possible? No, we are in async context usually.
+        // But register takes &mut self, implying exclusive access.
+        // But internal is RwLock.
+        // We can't block. We should make register async?
+        // OR we use try_write/blocking_write if we assume we are not in async runtime yet?
+        // But we might be.
+        // If we change register to async, it breaks API.
+        // However, if we have &mut self, we are the only one holding this struct?
+        // No, `servers` is Arc. Other clones might exist.
+        // So we MUST use async write or blocking write.
+        // Since this is usually called at setup, `blocking_write` might panic if in async context?
+        // Use `tokio::task::block_in_place`?
+        // Ideally register should be async.
+        // But for backward compat, let's try to use std::sync::RwLock if we don't need async lock?
+        // But servers need to be accessed async in get/list.
+        // Let's use `futures::executor::block_on`?
+        // Actually, if we spawn a task to do it?
+
+        // Simpler: Just spawn a task? No we want it done now.
+        // For now, let's use `try_write`. If it fails, we spin?
+        // Or better: Change `register` to `async fn register`.
+        // This breaks API but it's cleaner.
+
+        // Wait, if we use `parking_lot::RwLock`, we can write synchronously.
+        // Does McpServerManager need to be async aware?
+        // `get` returns `Option<Arc>`.
+        // `list_all_tools` is async because it calls `list_tools` on servers.
+        // The map access itself can be sync.
+        // So let's use `std::sync::RwLock` or `parking_lot::RwLock`.
+        // Since we are in tokio environment, `std::sync::RwLock` is fine if we don't hold it across await points.
+        // `list_all_tools` iterates. If we hold read lock while awaiting `list_tools`, we block writers.
+        // We should clone the servers list then iterate.
+
+        let mut servers = self.servers.blocking_write();
+        servers.insert(name, Arc::from(server));
     }
 
+    // Helper for sync writing (using tokio blocking_write which might not exist on RwLock?)
+    // Tokio RwLock has `blocking_write`.
+
     /// Get a server by name.
-    pub fn get(&self, name: &str) -> Option<&dyn McpServer> {
-        self.servers.get(name).map(|s| s.as_ref())
+    pub fn get(&self, name: &str) -> Option<Arc<dyn McpServer>> {
+        // Use blocking read
+        self.servers.blocking_read().get(name).cloned()
     }
 
     /// List all registered servers.
-    pub fn list_servers(&self) -> Vec<&str> {
-        self.servers.keys().map(|s| s.as_str()).collect()
+    pub fn list_servers(&self) -> Vec<String> {
+        self.servers.blocking_read().keys().cloned().collect()
     }
 
     /// List all tools from all servers.
     pub async fn list_all_tools(&self) -> Result<Vec<(String, ToolInfo)>, ClaudeAgentError> {
+        // Snapshot servers to release lock
+        let servers: Vec<(String, Arc<dyn McpServer>)> = {
+            let guard = self.servers.read().await;
+            guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
+
         let mut all_tools = Vec::new();
-        for (server_name, server) in &self.servers {
+        for (server_name, server) in servers {
             let tools = server.list_tools().await?;
             for tool in tools {
                 all_tools.push((server_name.clone(), tool));

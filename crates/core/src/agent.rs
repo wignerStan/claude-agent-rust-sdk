@@ -118,7 +118,10 @@ pub struct ClaudeAgent {
     /// This is set via `set_transport()` and used for all
     /// communication. If `None`, the agent will automatically spawn a
     /// `SubprocessTransport` on the first `connect()` call.
-    transport: Option<Box<dyn Transport>>,
+    transport: Option<Arc<tokio::sync::RwLock<Box<dyn Transport>>>>,
+
+    /// Abort handle for the background control loop task.
+    control_loop_abort: Option<tokio::task::AbortHandle>,
 
     /// Session manager for tracking conversation state.
     ///
@@ -172,6 +175,7 @@ impl ClaudeAgent {
         Self {
             options,
             transport: None,
+            control_loop_abort: None,
             session_manager: SessionManager::new(),
             hook_registry: HookRegistry::new(),
             permission_handler: PermissionHandler::new(),
@@ -186,96 +190,68 @@ impl ClaudeAgent {
     ///
     /// Useful for testing with mock transports or using custom transport implementations.
     pub fn set_transport(&mut self, transport: Box<dyn Transport>) {
-        self.transport = Some(transport);
+        self.transport = Some(Arc::new(tokio::sync::RwLock::new(transport)));
     }
 
     /// Connect to Claude Code CLI.
     pub async fn connect(&mut self, prompt: Option<&str>) -> Result<(), ClaudeAgentError> {
+        // Initialize transport if needed
         if self.transport.is_none() {
             let transport =
                 SubprocessTransport::new(prompt.map(|s| s.to_string()), self.options.clone());
-            self.transport = Some(Box::new(transport));
+            self.transport = Some(Arc::new(tokio::sync::RwLock::new(Box::new(transport))));
         }
 
-        let transport = self
-            .transport
-            .as_mut()
-            .ok_or_else(|| ClaudeAgentError::Transport("Transport not initialized".to_string()))?;
-        transport.connect().await?;
-
-        // Create session
-        self.session_manager.create_session();
-
-        Ok(())
-    }
-
-    /// Execute a query and return a stream of messages.
-    pub async fn query(
-        &mut self,
-        prompt: &str,
-    ) -> Result<BoxStream<'_, Result<Message, ClaudeAgentError>>, ClaudeAgentError> {
-        // Connect if not already connected
-        if self.transport.is_none() {
-            self.connect(None).await?;
+        // Connect
+        {
+            let mut guard = self.transport.as_ref().unwrap().write().await;
+            guard.connect().await?;
         }
 
-        let transport = self
-            .transport
-            .as_ref()
-            .ok_or_else(|| ClaudeAgentError::Transport("Transport not connected".to_string()))?;
-
-        // Write the prompt to the transport
-        use serde_json::json;
-
-        // Construct a proper UserMessage for the stream-json protocol
-        // We manually construct it to ensure structure matches what CLI expects:
-        // { "type": "user", "message": { "role": "user", "content": ... } }
-        let user_msg = json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        });
-
-        let msg_str = serde_json::to_string(&user_msg).unwrap_or_else(|_| prompt.to_string());
-
-        transport.write(&msg_str).await?;
-
-        let mut json_stream = transport.read_messages().await;
-
-        // Create references to fields we need in the stream to avoid capturing &mut self
-        let mcp_manager = &self.mcp_manager;
-        let control_protocol = self.control_protocol.as_ref().cloned();
+        // Spawn control loop background task
+        let transport_arc = self.transport.as_ref().unwrap().clone();
         let control_rx_mutex = self.control_rx.clone();
+        let mcp_manager = self.mcp_manager.clone();
+        let control_protocol = self.control_protocol.clone();
         let initialization_data_mutex = self.initialization_data.clone();
 
-        // Use async-stream for the complex loop
-        let stream = async_stream::stream! {
+        let abort_handle = tokio::spawn(async move {
+            // Get stream of incoming messages
+            let stream_transport = transport_arc.read().await;
+            let mut incoming_stream = stream_transport.read_messages().await;
+
             loop {
-                // We need to lock the receiver to wait for messages
-                // This means we hold the lock while waiting for EITHER transport OR control
-                // This is safe because no one else is contending for control_rx during query
+                // We lock control_rx to wait for outgoing requests
+                // Note: This lock is held while waiting for incoming messages too
                 let mut control_guard = control_rx_mutex.lock().await;
 
                 tokio::select! {
-                     // Handle incoming messages from Transport
-                     maybe_msg = json_stream.next() => {
-                         match maybe_msg {
-                             Some(result) => {
-                                 let value = match result {
-                                     Ok(v) => v,
-                                     Err(e) => {
-                                         yield Err(e);
-                                         break;
-                                     }
-                                 };
+                    // Handle outgoing control requests
+                    Some(req) = control_guard.recv() => {
+                         let req_json = serde_json::json!({
+                             "type": "control_request",
+                             "request_id": req.request_id,
+                             "request": match req.request {
+                                 crate::control::ControlRequestType::Interrupt => serde_json::json!({"subtype": "interrupt"}),
+                                 crate::control::ControlRequestType::SetPermissionMode { mode } => serde_json::json!({"subtype": "set_permission_mode", "mode": mode}),
+                                 crate::control::ControlRequestType::SetModel { model } => serde_json::json!({"subtype": "set_model", "model": model}),
+                                 crate::control::ControlRequestType::RewindFiles { user_message_id } => serde_json::json!({"subtype": "rewind_files", "user_message_id": user_message_id}),
+                                 _ => serde_json::Value::Null
+                             }
+                         });
 
+                         let req_str = serde_json::to_string(&req_json).unwrap_or_default();
+                         // Acquire read lock just for writing
+                         if let Err(e) = transport_arc.read().await.write(&req_str).await {
+                             eprintln!("Control loop write error: {}", e);
+                             break;
+                         }
+                    }
+
+                    // Handle incoming messages (looking for control_request from CLI or control_response)
+                    maybe_msg = incoming_stream.next() => {
+                        match maybe_msg {
+                            Some(Ok(value)) => {
                                  let msg_type = value.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
 
                                  if msg_type == "control_request" {
@@ -283,7 +259,7 @@ impl ClaudeAgent {
                                       let req_payload = value.get("request").cloned().unwrap_or(serde_json::Value::Null);
                                       let subtype = req_payload.get("subtype").and_then(|s| s.as_str()).unwrap_or("unknown");
 
-                                      let response_data = match subtype {
+                                      let response_data: serde_json::Value = match subtype {
                                           "mcp_message" => {
                                               let server_name = req_payload.get("server_name").and_then(|s| s.as_str());
                                               let message = req_payload.get("message");
@@ -319,8 +295,8 @@ impl ClaudeAgent {
                                       });
 
                                       let response_str = serde_json::to_string(&response).unwrap_or_default();
-                                      if let Err(e) = transport.write(&response_str).await {
-                                           yield Err(e);
+                                      if let Err(e) = transport_arc.read().await.write(&response_str).await {
+                                           eprintln!("Control loop write response error: {}", e);
                                            break;
                                       }
                                  } else if msg_type == "control_response" {
@@ -334,47 +310,95 @@ impl ClaudeAgent {
                                           };
                                           let _ = cp.handle_response(resp).await;
                                      }
-                                 } else {
-                                     // Check if it's the init message
-                                     if msg_type == "system" && value.get("subtype").and_then(|t| t.as_str()) == Some("init") {
-                                         let mut init_guard = initialization_data_mutex.lock().await;
-                                         *init_guard = value.get("data").cloned();
-                                     }
-
-                                     match serde_json::from_value(value) {
-                                         Ok(msg) => yield Ok(msg),
-                                         Err(e) => {
-                                             yield Err(ClaudeAgentError::MessageParse(format!("Failed to parse message: {}", e)));
-                                         }
-                                     }
+                                 } else if msg_type == "system" && value.get("subtype").and_then(|t| t.as_str()) == Some("init") {
+                                     let mut init_guard = initialization_data_mutex.lock().await;
+                                     *init_guard = value.get("data").cloned();
                                  }
-                             },
-                             None => break, // Stream anded
-                         }
-                     },
-
-                     Some(req) = control_guard.recv() => {
-                         let req_json = serde_json::json!({
-                             "type": "control_request",
-                             "request_id": req.request_id,
-                             "request": match req.request {
-                                 crate::control::ControlRequestType::Interrupt => serde_json::json!({"subtype": "interrupt"}),
-                                 crate::control::ControlRequestType::SetPermissionMode { mode } => serde_json::json!({"subtype": "set_permission_mode", "mode": mode}),
-                                 crate::control::ControlRequestType::SetModel { model } => serde_json::json!({"subtype": "set_model", "model": model}),
-                                 crate::control::ControlRequestType::RewindFiles { user_message_id } => serde_json::json!({"subtype": "rewind_files", "user_message_id": user_message_id}),
-                                 _ => serde_json::Value::Null
-                             }
-                         });
-
-                         let req_str = serde_json::to_string(&req_json).unwrap_or_default();
-                         if let Err(e) = transport.write(&req_str).await {
-                             yield Err(e);
-                             break;
-                         }
-                     }
+                            }
+                            Some(Err(e)) => {
+                                eprintln!("Control loop read error: {}", e);
+                                // Don't break on read error, transport might recover or it's transient?
+                                // Actually Transport::read_messages yields errors for fatal things usually?
+                            }
+                            None => break, // Stream ended
+                        }
+                    }
                 }
             }
+        }).abort_handle();
 
+        self.control_loop_abort = Some(abort_handle);
+
+        // Create session
+        self.session_manager.create_session();
+
+        Ok(())
+    }
+
+    /// Execute a query and return a stream of messages.
+    pub async fn query(
+        &mut self,
+        prompt: &str,
+    ) -> Result<BoxStream<'_, Result<Message, ClaudeAgentError>>, ClaudeAgentError> {
+        // Connect if not already connected
+        if self.transport.is_none() {
+            self.connect(None).await?;
+        }
+
+        let transport_arc = self
+            .transport
+            .as_ref()
+            .ok_or_else(|| ClaudeAgentError::Transport("Transport not connected".to_string()))?;
+
+        // Write the prompt to the transport
+        use serde_json::json;
+
+        // Construct a proper UserMessage for the stream-json protocol
+        let user_msg = json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }
+        });
+
+        let msg_str = serde_json::to_string(&user_msg).unwrap_or_else(|_| prompt.to_string());
+
+        transport_arc.read().await.write(&msg_str).await?;
+
+        // Use async-stream to transform
+        let stream = async_stream::stream! {
+            let stream_transport = transport_arc.read().await;
+            let mut json_stream = stream_transport.read_messages().await;
+
+            while let Some(result) = json_stream.next().await {
+                match result {
+                    Ok(value) => {
+                        let msg_type = value.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+
+                        // Filter out control messages and system init (handled by background task)
+                        if msg_type == "control_request" || msg_type == "control_response" {
+                            continue;
+                        }
+                        if msg_type == "system" && value.get("subtype").and_then(|t| t.as_str()) == Some("init") {
+                            continue;
+                        }
+
+                        match serde_json::from_value(value) {
+                            Ok(msg) => yield Ok(msg),
+                            Err(e) => {
+                                yield Err(ClaudeAgentError::MessageParse(format!("Failed to parse message: {}", e)));
+                            }
+                        }
+                    }
+                    Err(e) => yield Err(e),
+                }
+            }
         };
 
         Ok(Box::pin(stream))
@@ -429,10 +453,17 @@ impl ClaudeAgent {
 
     /// Disconnect from Claude Code CLI.
     pub async fn disconnect(&mut self) -> Result<(), ClaudeAgentError> {
-        if let Some(ref mut transport) = self.transport {
-            transport.close().await?;
+        // Abort background control loop
+        if let Some(abort_handle) = self.control_loop_abort.take() {
+            abort_handle.abort();
         }
-        self.transport = None;
+
+        if let Some(transport_arc) = self.transport.take() {
+            // We need to acquire write lock to close
+            // This waits for any readers (like the background loop or query stream) to drop their locks
+            let mut guard = transport_arc.write().await;
+            guard.close().await?;
+        }
 
         if let Some(session) = self.session_manager.current_session_mut() {
             session.deactivate();

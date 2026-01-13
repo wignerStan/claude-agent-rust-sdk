@@ -22,7 +22,7 @@ async fn test_manager_registration_and_listing() {
     // Check servers list
     let servers = manager.list_servers();
     assert_eq!(servers.len(), 1);
-    assert!(servers.contains(&"sdk-server"));
+    assert!(servers.contains(&"sdk-server".to_string()));
 
     // Check tools list
     let all_tools = manager
