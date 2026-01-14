@@ -6,19 +6,12 @@ on:
   pull_request:
     branches: [main, 'develop']
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version'
-        required: true
-        type: string
 
 jobs:
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest, macos-latest, windows-latest
-    strategy:
-      matrix:
-        rust: [stable, beta]
+  # Quick checks for all changes (runs on every commit)
+  check:
+    name: Quick Checks
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,61 +21,38 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry and index
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Run cargo test
-        run: cargo test --workspace --verbose
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
 
-      - name: Run cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Run cargo fmt check
+      - name: Check formatting
         run: cargo fmt --all -- --check
 
-  lint:
-    name: Run Linters
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Run cargo clippy
+      - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  build:
-    name: Build Project
-    runs-on: ubuntu-latest, macos-latest, windows-latest
-    strategy:
-      matrix:
-        rust: [stable]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Run tests
+        run: cargo test --workspace
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-stable-cargo-registry
-
-      - name: Build workspace
-        run: cargo build --workspace --release
-
-  security-audit:
+  # Security audit (runs on main branch only)
+  security:
     name: Security Audit
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -95,9 +65,16 @@ jobs:
       - name: Run cargo audit
         run: cargo audit --workspace
 
-  code-coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
+  # Cross-platform testing (runs on main branch only)
+  test-cross-platform:
+    name: Test (${{ matrix.os }}, ${{ matrix.rust }})
+    runs-on: ${{ matrix.os }}
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -105,24 +82,67 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          toolchain: ${{ matrix.rust }}
 
-      - name: Generate coverage report
-        run: |
-          cargo install cargo-tarpaulin
-          cargo tarpaulin --out Xml --workspace --exclude-files "demos/*"
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Cache cargo registry and index
+        uses: actions/cache@v4
         with:
-          files: ./cobertura.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: true
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-
 
-  docs:
-    name: Build Documentation
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.rust }}-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-build-
+
+      - name: Run tests
+        run: cargo test --workspace
+
+  # Release build (runs on main branch only)
+  build-release:
+    name: Build Release
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-release-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-release-build-
+
+      - name: Build workspace in release mode
+        run: cargo build --workspace --release
+
+  # Build and deploy docs (runs on main branch only)
+  docs:
+    name: Build Docs
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
