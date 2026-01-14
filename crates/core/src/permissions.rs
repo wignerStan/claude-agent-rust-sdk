@@ -46,14 +46,11 @@ impl PermissionHandler {
             Some(callback) => {
                 let context = ToolPermissionContext { suggestions };
                 callback(tool_name.to_string(), input, context).await
-            }
+            },
             None => {
                 // No callback set, allow by default
-                Ok(PermissionResult::Allow {
-                    updated_input: None,
-                    updated_permissions: None,
-                })
-            }
+                Ok(PermissionResult::Allow { updated_input: None, updated_permissions: None })
+            },
         }
     }
 

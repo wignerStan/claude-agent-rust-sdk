@@ -41,9 +41,7 @@ impl ClaudeAgentClient {
     /// Create a new Claude Agent client.
     pub fn new(options: Option<ClaudeAgentOptions>) -> Self {
         let opts = options.unwrap_or_default();
-        Self {
-            agent: ClaudeAgent::new(opts),
-        }
+        Self { agent: ClaudeAgent::new(opts) }
     }
 
     /// Set the transport implementation.

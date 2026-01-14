@@ -9,10 +9,7 @@ use futures::StreamExt;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting interactive session...");
 
-    let options = ClaudeAgentOptions {
-        cwd: Some(std::env::current_dir()?),
-        ..Default::default()
-    };
+    let options = ClaudeAgentOptions { cwd: Some(std::env::current_dir()?), ..Default::default() };
 
     let mut client = ClaudeAgentClient::new(Some(options));
 

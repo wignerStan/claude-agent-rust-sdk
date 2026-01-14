@@ -69,7 +69,7 @@ async fn test_live_connectivity() {
                 eprintln!("Claude CLI NOT found in PATH");
             }
             panic!("Connection failed");
-        }
+        },
     }
 
     // 3. Simple Query
@@ -93,7 +93,7 @@ async fn test_live_connectivity() {
                                 Ok(Message::Assistant(m)) => {
                                     println!("Assistant: {:?}", m);
                                     found_pong = true;
-                                }
+                                },
                                 Ok(Message::Result(r)) => {
                                     if !found_pong {
                                         if let Some(res_text) = r.result {
@@ -105,7 +105,7 @@ async fn test_live_connectivity() {
                                     }
                                     // Result message indicates end of turn
                                     break;
-                                }
+                                },
                                 Ok(other) => println!("Received: {:?}", other),
                                 Err(e) => println!("Stream error: {}", e),
                             }
@@ -113,10 +113,10 @@ async fn test_live_connectivity() {
 
                         // We check found_pong
                         assert!(found_pong, "Did not receive PONG response from live CLI");
-                    }
+                    },
                     Err(e) => panic!("Query failed to start: {}", e),
                 }
-            }
+            },
             Err(_) => panic!("Timed out waiting for response. Check auth/CLI status."),
         }
     } // stream dropped here
@@ -148,7 +148,7 @@ async fn test_live_conversation_memory() {
                     if let Message::Result(_) = m {
                         break;
                     }
-                }
+                },
                 Err(e) => eprintln!("Turn 1 error: {}", e),
             }
         }
@@ -169,21 +169,18 @@ async fn test_live_conversation_memory() {
                             buffer.push_str(&t.text);
                         }
                     }
-                }
+                },
                 Ok(Message::Result(r)) => {
                     if let Some(res) = r.result {
                         buffer.push_str(&res);
                     }
                     break;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         println!("Memory Test Response: {}", buffer);
-        assert!(
-            buffer.contains("IntegrationTestUser"),
-            "Agent failed to remember context"
-        );
+        assert!(buffer.contains("IntegrationTestUser"), "Agent failed to remember context");
     } // stream2 dropped
 
     client.disconnect().await.expect("Disconnect failed");

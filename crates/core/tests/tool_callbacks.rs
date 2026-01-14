@@ -5,19 +5,14 @@ use claude_agent_types::hooks::HookEvent;
 use std::sync::{Arc, Mutex};
 
 fn make_test_callback(counter: Arc<Mutex<i32>>) -> HookCallback {
-    Arc::new(
-        move |_input: HookInput, _id: Option<String>, _ctx: HookContext| {
-            let c = counter.clone();
-            Box::pin(async move {
-                let mut guard = c.lock().unwrap();
-                *guard += 1;
-                Ok(HookOutput {
-                    continue_execution: true,
-                    ..Default::default()
-                })
-            })
-        },
-    )
+    Arc::new(move |_input: HookInput, _id: Option<String>, _ctx: HookContext| {
+        let c = counter.clone();
+        Box::pin(async move {
+            let mut guard = c.lock().unwrap();
+            *guard += 1;
+            Ok(HookOutput { continue_execution: true, ..Default::default() })
+        })
+    })
 }
 
 #[tokio::test]
@@ -25,12 +20,7 @@ async fn test_tool_execution_callback() {
     let counter = Arc::new(Mutex::new(0));
     let mut registry = HookRegistry::new();
 
-    registry.register(
-        HookEvent::PreToolUse,
-        None,
-        make_test_callback(counter.clone()),
-        None,
-    );
+    registry.register(HookEvent::PreToolUse, None, make_test_callback(counter.clone()), None);
 
     let input = HookInput {
         event_name: HookEvent::PreToolUse,
@@ -44,10 +34,7 @@ async fn test_tool_execution_callback() {
         prompt: None,
     };
 
-    let outputs = registry
-        .execute_hooks(&HookEvent::PreToolUse, input, None)
-        .await
-        .unwrap();
+    let outputs = registry.execute_hooks(&HookEvent::PreToolUse, input, None).await.unwrap();
 
     assert_eq!(outputs.len(), 1);
     assert!(outputs[0].continue_execution);
@@ -78,10 +65,7 @@ async fn test_tool_matcher_filter() {
         prompt: None,
     };
 
-    let outputs = registry
-        .execute_hooks(&HookEvent::PreToolUse, input, None)
-        .await
-        .unwrap();
+    let outputs = registry.execute_hooks(&HookEvent::PreToolUse, input, None).await.unwrap();
 
     // Should not trigger because Bash doesn't match Write|Edit
     assert_eq!(outputs.len(), 0);

@@ -22,9 +22,7 @@ fn test_user_message_creation() {
 
 #[test]
 fn test_assistant_message_with_text() {
-    let text_block = ContentBlock::Text(TextBlock {
-        text: "Hello, human!".to_string(),
-    });
+    let text_block = ContentBlock::Text(TextBlock { text: "Hello, human!".to_string() });
 
     let msg = AssistantMessage {
         content: vec![text_block],
@@ -147,42 +145,27 @@ fn test_claude_code_options_with_permission_mode() {
         permission_mode: Some(PermissionMode::BypassPermissions),
         ..Default::default()
     };
-    assert_eq!(
-        options.permission_mode,
-        Some(PermissionMode::BypassPermissions)
-    );
+    assert_eq!(options.permission_mode, Some(PermissionMode::BypassPermissions));
 
-    let options_plan = ClaudeAgentOptions {
-        permission_mode: Some(PermissionMode::Plan),
-        ..Default::default()
-    };
+    let options_plan =
+        ClaudeAgentOptions { permission_mode: Some(PermissionMode::Plan), ..Default::default() };
     assert_eq!(options_plan.permission_mode, Some(PermissionMode::Plan));
 
-    let options_default = ClaudeAgentOptions {
-        permission_mode: Some(PermissionMode::Default),
-        ..Default::default()
-    };
-    assert_eq!(
-        options_default.permission_mode,
-        Some(PermissionMode::Default)
-    );
+    let options_default =
+        ClaudeAgentOptions { permission_mode: Some(PermissionMode::Default), ..Default::default() };
+    assert_eq!(options_default.permission_mode, Some(PermissionMode::Default));
 
     let options_accept = ClaudeAgentOptions {
         permission_mode: Some(PermissionMode::AcceptEdits),
         ..Default::default()
     };
-    assert_eq!(
-        options_accept.permission_mode,
-        Some(PermissionMode::AcceptEdits)
-    );
+    assert_eq!(options_accept.permission_mode, Some(PermissionMode::AcceptEdits));
 }
 
 #[test]
 fn test_claude_code_options_with_system_prompt_string() {
     let options = ClaudeAgentOptions {
-        system_prompt: Some(SystemPromptConfig::Text(
-            "You are a helpful assistant.".to_string(),
-        )),
+        system_prompt: Some(SystemPromptConfig::Text("You are a helpful assistant.".to_string())),
         ..Default::default()
     };
 
@@ -206,7 +189,7 @@ fn test_claude_code_options_with_system_prompt_preset() {
         Some(SystemPromptConfig::Preset(SystemPromptPreset::Preset { preset, append })) => {
             assert_eq!(preset, "claude_code");
             assert!(append.is_none());
-        }
+        },
         _ => panic!("Expected preset system prompt"),
     }
 }
@@ -225,7 +208,7 @@ fn test_claude_code_options_with_system_prompt_preset_and_append() {
         Some(SystemPromptConfig::Preset(SystemPromptPreset::Preset { preset, append })) => {
             assert_eq!(preset, "claude_code");
             assert_eq!(append, Some("Be concise.".to_string()));
-        }
+        },
         _ => panic!("Expected preset system prompt"),
     }
 }
@@ -251,8 +234,5 @@ fn test_claude_code_options_with_model_specification() {
     };
 
     assert_eq!(options.model, Some("claude-sonnet-4-5".to_string()));
-    assert_eq!(
-        options.permission_prompt_tool_name,
-        Some("CustomTool".to_string())
-    );
+    assert_eq!(options.permission_prompt_tool_name, Some("CustomTool".to_string()));
 }

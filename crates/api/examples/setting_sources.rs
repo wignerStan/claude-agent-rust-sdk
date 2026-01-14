@@ -11,11 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = env::var("CLAUDE_MODEL").ok();
     let cwd = env::var("CLAUDE_CWD").ok().map(std::path::PathBuf::from);
 
-    let options = ClaudeAgentOptions {
-        model,
-        cwd,
-        ..Default::default()
-    };
+    let options = ClaudeAgentOptions { model, cwd, ..Default::default() };
 
     println!("Using options: {:?}", options);
 

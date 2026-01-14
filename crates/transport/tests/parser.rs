@@ -136,10 +136,7 @@ fn test_parse_user_message_inside_subagent() {
     let message: Message = serde_json::from_value(data).unwrap();
 
     if let Message::User(user_msg) = message {
-        assert_eq!(
-            user_msg.parent_tool_use_id.unwrap(),
-            "toolu_01Xrwd5Y13sEHtzScxR77So8"
-        );
+        assert_eq!(user_msg.parent_tool_use_id.unwrap(), "toolu_01Xrwd5Y13sEHtzScxR77So8");
     } else {
         panic!("Expected UserMessage");
     }

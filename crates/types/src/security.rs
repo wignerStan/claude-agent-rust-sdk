@@ -121,10 +121,7 @@ impl std::error::Error for ValidationError {}
 /// Validate that a string is not empty.
 pub fn validate_not_empty(field: &str, value: &str) -> Result<(), ValidationError> {
     if value.trim().is_empty() {
-        Err(ValidationError {
-            field: field.to_string(),
-            message: "must not be empty".to_string(),
-        })
+        Err(ValidationError { field: field.to_string(), message: "must not be empty".to_string() })
     } else {
         Ok(())
     }
@@ -152,10 +149,7 @@ pub fn validate_json_size(
     if size > max_bytes {
         Err(ValidationError {
             field: field.to_string(),
-            message: format!(
-                "JSON payload exceeds {} bytes (got {} bytes)",
-                max_bytes, size
-            ),
+            message: format!("JSON payload exceeds {} bytes (got {} bytes)", max_bytes, size),
         })
     } else {
         Ok(())

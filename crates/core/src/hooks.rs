@@ -66,9 +66,7 @@ pub struct RegisteredHook {
 impl HookRegistry {
     /// Create a new hook registry.
     pub fn new() -> Self {
-        Self {
-            hooks: HashMap::new(),
-        }
+        Self { hooks: HashMap::new() }
     }
 
     /// Register a hook callback.
@@ -79,11 +77,7 @@ impl HookRegistry {
         callback: HookCallback,
         timeout: Option<f64>,
     ) {
-        let hook = RegisteredHook {
-            matcher,
-            callback,
-            timeout,
-        };
+        let hook = RegisteredHook { matcher, callback, timeout };
         self.hooks.entry(event).or_default().push(hook);
     }
 
@@ -131,9 +125,7 @@ impl Default for HookRegistry {
 /// Check if a tool name matches a matcher pattern.
 fn matches_tool(matcher: &str, tool_name: &str) -> bool {
     // Simple pattern matching: support | for OR
-    matcher
-        .split('|')
-        .any(|pattern| pattern.trim() == tool_name)
+    matcher.split('|').any(|pattern| pattern.trim() == tool_name)
 }
 
 #[cfg(test)]

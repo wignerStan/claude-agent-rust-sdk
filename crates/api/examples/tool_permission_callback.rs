@@ -22,10 +22,7 @@ fn main() {
             }
 
             // Allow all other operations
-            Ok(PermissionResult::Allow {
-                updated_input: None,
-                updated_permissions: None,
-            })
+            Ok(PermissionResult::Allow { updated_input: None, updated_permissions: None })
         })
     });
 

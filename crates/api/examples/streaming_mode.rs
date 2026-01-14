@@ -22,8 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             print!("{}", t.text);
                         }
                     }
-                }
-                Ok(_) => {} // Handle other message types
+                },
+                Ok(_) => {}, // Handle other message types
                 Err(e) => eprintln!("Error: {}", e),
             }
         }

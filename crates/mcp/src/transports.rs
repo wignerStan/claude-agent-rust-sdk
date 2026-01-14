@@ -83,12 +83,7 @@ impl StdioMcpServer {
     /// # Ok::<(), claude_agent_types::ClaudeAgentError>(())
     /// ```
     pub fn new(name: String, command: String, args: Vec<String>) -> Result<Self, ClaudeAgentError> {
-        Ok(Self {
-            name,
-            command,
-            args,
-            transport: Arc::new(Mutex::new(None)),
-        })
+        Ok(Self { name, command, args, transport: Arc::new(Mutex::new(None)) })
     }
 
     /// Register a tool.
@@ -126,11 +121,7 @@ impl StdioMcpServer {
         Fut: Future<Output = Result<Value, ClaudeAgentError>> + Send + 'static,
     {
         let name = name.into();
-        let _info = ToolInfo {
-            name: name.clone(),
-            description,
-            input_schema,
-        };
+        let _info = ToolInfo { name: name.clone(), description, input_schema };
 
         // Box the handler to handle generic Future return type
         let _boxed_handler = Box::new(move |args| {
@@ -158,10 +149,8 @@ impl StdioMcpServer {
                 ClaudeAgentError::Mcp(format!("Failed to spawn {}: {}", self.name, e))
             })?;
 
-            let stdin = child
-                .stdin
-                .take()
-                .ok_or_else(|| ClaudeAgentError::Mcp("No stdin".to_string()))?;
+            let stdin =
+                child.stdin.take().ok_or_else(|| ClaudeAgentError::Mcp("No stdin".to_string()))?;
             let stdout = child
                 .stdout
                 .take()
@@ -199,21 +188,16 @@ impl StdioMcpServer {
                                 }
                             }
                             // Handle notifications (optional)
-                        }
+                        },
                         Err(e) => {
                             eprintln!("MCP Error: {}", e);
                             break;
-                        }
+                        },
                     }
                 }
             });
 
-            let state = StdioTransportState {
-                child,
-                stdin,
-                pending_requests,
-                next_id,
-            };
+            let state = StdioTransportState { child, stdin, pending_requests, next_id };
             *guard = Some(state);
         }
 
@@ -266,9 +250,7 @@ impl StdioMcpServer {
         // Scope for lock
         {
             let mut guard = self.transport.lock().await;
-            let state = guard
-                .as_mut()
-                .ok_or(ClaudeAgentError::Mcp("Not connected".to_string()))?;
+            let state = guard.as_mut().ok_or(ClaudeAgentError::Mcp("Not connected".to_string()))?;
 
             id = state.next_id.fetch_add(1, Ordering::SeqCst);
             let (sender, receiver) = oneshot::channel();
@@ -291,8 +273,7 @@ impl StdioMcpServer {
         }
 
         // Wait for response
-        tx.await
-            .map_err(|_| ClaudeAgentError::Mcp("Channel closed".to_string()))?
+        tx.await.map_err(|_| ClaudeAgentError::Mcp("Channel closed".to_string()))?
     }
 }
 
@@ -305,9 +286,8 @@ impl McpServer for StdioMcpServer {
     async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
         let res = self.request("tools/list", json!({})).await?;
         // Parse result.tools
-        let tools_val = res
-            .get("tools")
-            .ok_or(ClaudeAgentError::Mcp("No tools field".to_string()))?;
+        let tools_val =
+            res.get("tools").ok_or(ClaudeAgentError::Mcp("No tools field".to_string()))?;
         let tools: Vec<ToolInfo> = serde_json::from_value(tools_val.clone())
             .map_err(|e| ClaudeAgentError::Mcp(format!("Invalid tool list: {}", e)))?;
         Ok(tools)
@@ -356,12 +336,12 @@ impl McpServer for StdioMcpServer {
                         }
                     }
                 }))
-            }
+            },
             Some("tools/list") => {
                 // Delegate to list_tools
                 let tools = self.list_tools().await?;
                 Ok(serde_json::json!({ "tools": tools }))
-            }
+            },
             Some("tools/call") => {
                 // Delegate to call_tool
                 if let Some(params) = params {
@@ -374,7 +354,7 @@ impl McpServer for StdioMcpServer {
                 } else {
                     Err(ClaudeAgentError::Mcp("Missing params".to_string()))
                 }
-            }
+            },
             _ => Err(ClaudeAgentError::Mcp(format!(
                 "Unsupported method: {}",
                 method.unwrap_or("unknown")
@@ -439,18 +419,10 @@ impl SseMcpServer {
         url: String,
         timeout: std::time::Duration,
     ) -> Result<Self, ClaudeAgentError> {
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|e| {
-                ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
-            })?;
-        Ok(Self {
-            name,
-            url,
-            client,
-            timeout,
-        })
+        let client = reqwest::Client::builder().timeout(timeout).build().map_err(|e| {
+            ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
+        })?;
+        Ok(Self { name, url, client, timeout })
     }
 
     /// Send a JSON-RPC request to the SSE MCP server.
@@ -477,10 +449,7 @@ impl SseMcpServer {
             .map_err(|e| ClaudeAgentError::Mcp(format!("SSE HTTP request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(ClaudeAgentError::Mcp(format!(
-                "SSE HTTP error: {}",
-                response.status()
-            )));
+            return Err(ClaudeAgentError::Mcp(format!("SSE HTTP error: {}", response.status())));
         }
 
         let res: Value = response
@@ -490,10 +459,7 @@ impl SseMcpServer {
 
         // Check for JSON-RPC error
         if let Some(error) = res.get("error") {
-            let message = error
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("Unknown error");
+            let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
             let code = error.get("code").and_then(|c| c.as_i64());
             return Err(ClaudeAgentError::Mcp(format!(
                 "SSE JSON-RPC error (code {:?}): {}",
@@ -562,7 +528,7 @@ impl McpServer for SseMcpServer {
             Some("tools/list") => {
                 let tools = self.list_tools().await?;
                 Ok(serde_json::json!({ "tools": tools }))
-            }
+            },
             Some("tools/call") => {
                 if let Some(params) = params {
                     if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
@@ -574,7 +540,7 @@ impl McpServer for SseMcpServer {
                 } else {
                     Err(ClaudeAgentError::Mcp("Missing params".to_string()))
                 }
-            }
+            },
             _ => Err(ClaudeAgentError::Mcp(format!(
                 "Unsupported method: {}",
                 method.unwrap_or("unknown")
@@ -638,18 +604,10 @@ impl HttpMcpServer {
         url: String,
         timeout: std::time::Duration,
     ) -> Result<Self, ClaudeAgentError> {
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|e| {
-                ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
-            })?;
-        Ok(Self {
-            name,
-            url,
-            client,
-            timeout,
-        })
+        let client = reqwest::Client::builder().timeout(timeout).build().map_err(|e| {
+            ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
+        })?;
+        Ok(Self { name, url, client, timeout })
     }
 
     /// Send a JSON-RPC request to the HTTP MCP server.
@@ -676,10 +634,7 @@ impl HttpMcpServer {
             .map_err(|e| ClaudeAgentError::Mcp(format!("HTTP request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(ClaudeAgentError::Mcp(format!(
-                "HTTP error: {}",
-                response.status()
-            )));
+            return Err(ClaudeAgentError::Mcp(format!("HTTP error: {}", response.status())));
         }
 
         let res: Value = response
@@ -689,10 +644,7 @@ impl HttpMcpServer {
 
         // Check for JSON-RPC error
         if let Some(error) = res.get("error") {
-            let message = error
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("Unknown error");
+            let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
             let code = error.get("code").and_then(|c| c.as_i64());
             return Err(ClaudeAgentError::Mcp(format!(
                 "JSON-RPC error (code {:?}): {}",
@@ -761,7 +713,7 @@ impl McpServer for HttpMcpServer {
             Some("tools/list") => {
                 let tools = self.list_tools().await?;
                 Ok(serde_json::json!({ "tools": tools }))
-            }
+            },
             Some("tools/call") => {
                 if let Some(params) = params {
                     if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
@@ -773,7 +725,7 @@ impl McpServer for HttpMcpServer {
                 } else {
                     Err(ClaudeAgentError::Mcp("Missing params".to_string()))
                 }
-            }
+            },
             _ => Err(ClaudeAgentError::Mcp(format!(
                 "Unsupported method: {}",
                 method.unwrap_or("unknown")

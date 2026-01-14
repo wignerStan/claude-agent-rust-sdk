@@ -55,10 +55,7 @@ async fn test_http_mcp_server_call_tool() {
 
     let server =
         HttpMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");
-    let result = server
-        .call_tool("greet", json!({"name": "World"}))
-        .await
-        .unwrap();
+    let result = server.call_tool("greet", json!({"name": "World"})).await.unwrap();
 
     assert_eq!(result.get("isError").and_then(|v| v.as_bool()), Some(false));
 }
@@ -68,10 +65,7 @@ async fn test_http_mcp_server_call_tool() {
 async fn test_http_mcp_server_http_error() {
     let mock_server = MockServer::start().await;
 
-    Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(500))
-        .mount(&mock_server)
-        .await;
+    Mock::given(method("POST")).respond_with(ResponseTemplate::new(500)).mount(&mock_server).await;
 
     let server =
         HttpMcpServer::new("test".to_string(), mock_server.uri()).expect("Failed to create server");

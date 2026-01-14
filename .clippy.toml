@@ -1,0 +1,34 @@
+# Clippy Configuration
+# Production-ready linting rules for maximum code quality and security.
+
+# Warn on all wildcard imports
+warn-on-all-wildcard-imports = true
+
+# Disallow certain anti-patterns
+disallowed-methods = []
+
+# Maximum complexity thresholds
+max-trait-bounds = 5
+max-fn-params-bools = 3
+type-complexity-threshold = 250
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Single-char binding names threshold
+single-char-binding-names-threshold = 4
+
+# Literal representation threshold
+literal-representation-threshold = 30
+
+# Array size threshold for large arrays
+array-size-threshold = 512000
+
+# Vec box size threshold
+vec-box-size-threshold = 4096
+
+# Too many arguments threshold
+too-many-arguments-threshold = 7
+
+# Too many lines threshold
+too-many-lines-threshold = 100

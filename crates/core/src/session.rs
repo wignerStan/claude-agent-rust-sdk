@@ -33,12 +33,7 @@ impl Session {
 
     /// Create a session with a specific ID.
     pub fn with_id(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            is_active: true,
-            checkpoints: Vec::new(),
-            metadata: HashMap::new(),
-        }
+        Self { id: id.into(), is_active: true, checkpoints: Vec::new(), metadata: HashMap::new() }
     }
 
     /// Add a checkpoint.
@@ -89,26 +84,20 @@ pub struct SessionManager {
 impl SessionManager {
     /// Create a new session manager.
     pub fn new() -> Self {
-        Self {
-            sessions: HashMap::new(),
-            current_session_id: None,
-        }
+        Self { sessions: HashMap::new(), current_session_id: None }
     }
 
     /// Create a new session and set it as current.
     pub fn create_session(&mut self) -> &Session {
         let session = Session::new();
         let id = session.id.clone();
-        self.sessions.insert(id.clone(), session);
         self.current_session_id = Some(id.clone());
-        self.sessions.get(&id).unwrap()
+        self.sessions.entry(id).or_insert(session)
     }
 
     /// Get the current session.
     pub fn current_session(&self) -> Option<&Session> {
-        self.current_session_id
-            .as_ref()
-            .and_then(|id| self.sessions.get(id))
+        self.current_session_id.as_ref().and_then(|id| self.sessions.get(id))
     }
 
     /// Get a mutable reference to the current session.

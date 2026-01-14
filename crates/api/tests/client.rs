@@ -18,11 +18,7 @@ struct MockTransport {
 impl MockTransport {
     fn new(responses: Vec<serde_json::Value>) -> Self {
         let (tx, _) = tokio::sync::broadcast::channel(100);
-        Self {
-            sent_data: Arc::new(Mutex::new(Vec::new())),
-            initial_responses: responses,
-            tx,
-        }
+        Self { sent_data: Arc::new(Mutex::new(Vec::new())), initial_responses: responses, tx }
     }
 }
 
@@ -105,7 +101,7 @@ async fn test_client_query_single_prompt() {
                 messages.push(msg);
                 // Break after receiving the expected message since the stream stays open
                 break;
-            }
+            },
             Err(e) => panic!("Stream error: {}", e),
         }
     }
@@ -122,7 +118,7 @@ async fn test_client_query_single_prompt() {
                 ContentBlock::Text(text_block) => assert_eq!(text_block.text, "4"),
                 _ => panic!("Expected text content"),
             }
-        }
+        },
         _ => panic!("Expected AssistantMessage"),
     }
 
@@ -150,10 +146,7 @@ async fn test_client_control_methods() {
     }
 
     // Test Set Model
-    client
-        .set_model(Some("claude-test"))
-        .await
-        .expect("Set model failed");
+    client.set_model(Some("claude-test")).await.expect("Set model failed");
     {
         let sent = sent_data.lock().unwrap();
         let last_msg = sent.last().unwrap();
@@ -164,10 +157,7 @@ async fn test_client_control_methods() {
     }
 
     // Test Set Permission Mode
-    client
-        .set_permission_mode("plan")
-        .await
-        .expect("Set permission mode failed");
+    client.set_permission_mode("plan").await.expect("Set permission mode failed");
     {
         let sent = sent_data.lock().unwrap();
         let last_msg = sent.last().unwrap();

@@ -22,9 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Note: stderr callbacks are captured during transport read");
 
     {
-        let mut stream = client
-            .query("Run a command that might produce stderr")
-            .await?;
+        let mut stream = client.query("Run a command that might produce stderr").await?;
         while let Some(result) = stream.next().await {
             if let Ok(msg) = result {
                 println!("{:?}", msg);

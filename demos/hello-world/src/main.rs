@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     let options = ClaudeAgentOptions {
         max_turns: Some(100),
         cwd: Some(agent_dir.clone()),
-        model: Some("claude-opus-4-1-20250805".to_string()),
+        model: std::env::var("ANTHROPIC_MODEL").ok(),
         allowed_tools: vec![
             "Task".to_string(),
             "Bash".to_string(),
@@ -57,7 +57,10 @@ async fn main() -> Result<()> {
     println!("{}", "-".repeat(50));
 
     let mut client = ClaudeAgentClient::new(Some(options));
-    client.connect().await.context("Failed to connect to Claude Code")?;
+    client
+        .connect()
+        .await
+        .context("Failed to connect to Claude Code")?;
 
     {
         let mut stream = client
@@ -70,7 +73,9 @@ async fn main() -> Result<()> {
                 Ok(message) => {
                     if let claude_agent_types::Message::Assistant(msg) = message {
                         for block in msg.content {
-                            if let claude_agent_types::message::ContentBlock::Text(text_block) = block {
+                            if let claude_agent_types::message::ContentBlock::Text(text_block) =
+                                block
+                            {
                                 println!("Claude says: {}", text_block.text);
                             }
                         }

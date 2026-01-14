@@ -204,12 +204,21 @@ impl ClaudeAgent {
 
         // Connect
         {
-            let mut guard = self.transport.as_ref().unwrap().write().await;
+            let mut guard = self
+                .transport
+                .as_ref()
+                .expect("Transport should be initialized after the check above")
+                .write()
+                .await;
             guard.connect().await?;
         }
 
         // Spawn control loop background task
-        let transport_arc = self.transport.as_ref().unwrap().clone();
+        let transport_arc = self
+            .transport
+            .as_ref()
+            .expect("Transport should be initialized after the check above")
+            .clone();
         let control_rx_mutex = self.control_rx.clone();
         let mcp_manager = self.mcp_manager.clone();
         let control_protocol = self.control_protocol.clone();

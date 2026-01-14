@@ -36,10 +36,7 @@ async fn test_sdk_server_tool_registration_and_call() {
     assert_eq!(tools[0].name, "greet");
 
     // Call tool
-    let result = server
-        .call_tool("greet", json!({"name": "Alice"}))
-        .await
-        .expect("Call failed");
+    let result = server.call_tool("greet", json!({"name": "Alice"})).await.expect("Call failed");
 
     // Check result
     let content = result.get("content").expect("No content");

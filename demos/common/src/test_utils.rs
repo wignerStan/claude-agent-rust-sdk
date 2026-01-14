@@ -138,9 +138,7 @@ impl StreamCollector {
     }
 
     /// Collect all successful items, ignoring errors.
-    pub async fn collect_ok<T, E>(
-        stream: impl futures::Stream<Item = Result<T, E>>,
-    ) -> Vec<T>
+    pub async fn collect_ok<T, E>(stream: impl futures::Stream<Item = Result<T, E>>) -> Vec<T>
     where
         T: Send,
         E: std::fmt::Debug,
@@ -222,7 +220,7 @@ mod tests {
         transport.write("test data").await.unwrap();
 
         let sent = transport.get_sent_data();
-        assert_eq!(sent.len(),1);
+        assert_eq!(sent.len(), 1);
         assert_eq!(sent[0], "test data");
     }
 
@@ -261,7 +259,7 @@ mod tests {
                     "model": "claude-test"
                 }
             })),
-            Err(ClaudeAgentError::CLIConnectionError("Test error".to_string())),
+            Err(ClaudeAgentError::CLIConnection("Test error".to_string())),
         ]);
 
         let messages = StreamCollector::collect_ok(stream).await;
@@ -269,7 +267,7 @@ mod tests {
     }
 
     #[tokio::test]
-    fn test_fixture_creation() {
+    async fn test_fixture_creation() {
         let fixture = TestFixture::with_text("test");
         assert!(fixture.temp_path().exists());
         let file_path = fixture.create_file("test.txt", "content");

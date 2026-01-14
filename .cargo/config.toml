@@ -1,39 +1,156 @@
 # Cargo Configuration
+# Production-ready configuration for Rust projects
 
-# Production-ready settings for Claude Agent Rust SDK builds.
-
+# ============================================
+# Build Configuration
+# ============================================
 [build]
-# Enable incremental compilation
+# Enable incremental compilation for faster builds
 incremental = true
 
+# Workspace configuration
+[workspace]
+resolver = "2"
+
+# ============================================
+# Profile Configurations
+# ============================================
+
+# Release configuration - Production environment
 [profile.release]
-# Optimize for size and speed
 opt-level = 3
 lto = true
 codegen-units = 1
+strip = "debuginfo"
+panic = "abort"
+incremental = false
+debug = false
+rpath = false
+overflow-checks = true
 
-# Strip debug symbols
-strip = true
+# Custom optimized configuration with debug info
+[profile.release-with-debug]
+inherits = "release"
+debug = 1
+strip = false
 
+# Minimum size configuration
+[profile.min-size]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false
+
+# Maximum performance configuration
+[profile.max-perf]
+inherits = "release"
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+panic = "unwind"
+
+# Development configuration - Development environment
 [profile.dev]
-# Faster builds for development
 opt-level = 0
+debug = 2
+split-debuginfo = "packed"
+incremental = true
+codegen-units = 256
+overflow-checks = true
 
+# Test configuration
+[profile.test]
+inherits = "dev"
+opt-level = 1
+debug = 2
+overflow-checks = true
+
+# Benchmark configuration
+[profile.bench]
+inherits = "release"
+opt-level = 3
+debug = false
+overflow-checks = false
+
+# ============================================
+# Platform-Specific Configurations
+# ============================================
+
+# macOS configuration (current platform)
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-dead_strip",
+]
+
+# macOS ARM64 (Apple Silicon)
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-dead_strip",
+]
+
+# ============================================
+# Documentation Configuration
+# ============================================
 [doc]
 # Document all public APIs
 document-private-items = false
+# Don't auto-open after build
+open = false
 
-# Open documentation in browser after build
-open = true
+[rustdoc]
+# Rustdoc advanced configuration
+broken-intra-doc-links = "warn"
+# Enable all features
+all-features = true
 
-[clippy]
-# Maximize warnings for production code
-warn-on-all-wildcard-imports = true
-
-# Allow certain pedantic lints
-allow-print = true
-allow-unwrap-in-tests = true
-
+# ============================================
+# Network and Dependency Configuration
+# ============================================
 [net]
-# Network optimizations for faster builds
+# Network optimizations
 git-fetch-with-cli = true
+offline = false
+retry = 3
+
+# ============================================
+# Package Publishing Configuration
+# ============================================
+[registries.crates-io]
+index = "https://github.com/rust-lang/crates.io-index"
+protocol = "sparse"
+
+# ============================================
+# Environment Variables Configuration
+# ============================================
+[env]
+# Set default RUSTFLAGS
+RUSTFLAGS = { value = "-D warnings", force = true }
+
+# ============================================
+# Command Aliases
+# ============================================
+[alias]
+# Basic aliases
+b = "build"
+t = "test"
+r = "run"
+c = "check"
+d = "doc"
+
+# Quality aliases
+clean-all = "clean --release && clean --target-dir"
+upgrade = "update --aggressive"
+tree = "tree --workspace --depth 3"
+
+# CI-related aliases
+ci = "test --workspace && clippy --workspace --all-targets -- -D warnings && fmt -- --check"
+ci-full = "ci && deny check advisories bans sources licenses"
+
+# Security aliases
+security = "deny check advisories bans sources licenses"
+
+# Release aliases
+release-check = "clippy --workspace --all-targets -- -D warnings && test --workspace && doc --workspace --no-deps"

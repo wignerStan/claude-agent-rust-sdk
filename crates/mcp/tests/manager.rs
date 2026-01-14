@@ -25,10 +25,7 @@ async fn test_manager_registration_and_listing() {
     assert!(servers.contains(&"sdk-server".to_string()));
 
     // Check tools list
-    let all_tools = manager
-        .list_all_tools()
-        .await
-        .expect("Failed to list tools");
+    let all_tools = manager.list_all_tools().await.expect("Failed to list tools");
     assert_eq!(all_tools.len(), 1);
     let (server_name, tool_info) = &all_tools[0];
     assert_eq!(server_name, "sdk-server");

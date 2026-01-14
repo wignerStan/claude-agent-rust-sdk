@@ -16,6 +16,7 @@ claude-agent-api = { path = "../crates/api" }
 claude-agent-types = { path = "../crates/types" }
 claude-agent-core = { path = "../crates/core" }
 claude-agent-transport = { path = "../crates/transport" }
+claude-agent-demos-common = { path = "./common" }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }

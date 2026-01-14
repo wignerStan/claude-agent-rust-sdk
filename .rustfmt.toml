@@ -1,3 +1,26 @@
 edition = "2021"
 max_width = 100
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+
+# Code style optimization
+use_small_heuristics = "Max"
 reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# Error chain formatting
+chain_width = 100
+
+# Function formatting (fixed deprecated fn_args_layout)
+fn_params_layout = "Tall"
+fn_call_width = 80
+
+# Struct formatting
+struct_variant_width = 35
+
+# Match formatting
+match_block_trailing_comma = true

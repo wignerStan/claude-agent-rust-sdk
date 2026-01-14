@@ -271,9 +271,7 @@ pub struct ToolInfo {
 impl McpServerManager {
     /// Create a new MCP server manager.
     pub fn new() -> Self {
-        Self {
-            servers: Arc::new(RwLock::new(HashMap::new())),
-        }
+        Self { servers: Arc::new(RwLock::new(HashMap::new())) }
     }
 
     /// Register an MCP server.

@@ -17,9 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.connect().await?;
 
     {
-        let mut stream = client
-            .query("Explain Rust ownership in one sentence.")
-            .await?;
+        let mut stream = client.query("Explain Rust ownership in one sentence.").await?;
 
         while let Some(result) = stream.next().await {
             if let Ok(msg) = result {

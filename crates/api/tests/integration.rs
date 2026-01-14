@@ -16,10 +16,7 @@ struct MockTransport {
 
 impl MockTransport {
     fn new(responses: Vec<serde_json::Value>) -> Self {
-        Self {
-            sent_data: Arc::new(Mutex::new(Vec::new())),
-            responses,
-        }
+        Self { sent_data: Arc::new(Mutex::new(Vec::new())), responses }
     }
 }
 
@@ -85,7 +82,7 @@ async fn test_simple_query_response() {
                 ContentBlock::Text(t) => assert_eq!(t.text, "2 + 2 equals 4"),
                 _ => panic!("Expected text"),
             }
-        }
+        },
         _ => panic!("Expected Assistant message"),
     }
 
@@ -93,7 +90,7 @@ async fn test_simple_query_response() {
         Message::Result(msg) => {
             assert_eq!(msg.total_cost_usd, Some(0.001));
             assert_eq!(msg.session_id, "test-session");
-        }
+        },
         _ => panic!("Expected Result message"),
     }
 }
@@ -132,10 +129,8 @@ async fn test_query_with_tool_use() {
     });
 
     let mock_transport = MockTransport::new(vec![response1, response2]);
-    let options = ClaudeAgentOptions {
-        allowed_tools: vec!["Read".to_string()],
-        ..Default::default()
-    };
+    let options =
+        ClaudeAgentOptions { allowed_tools: vec!["Read".to_string()], ..Default::default() };
 
     let mut client = ClaudeAgentClient::new(Some(options));
     client.set_transport(Box::new(mock_transport));
@@ -159,10 +154,10 @@ async fn test_query_with_tool_use() {
                 ContentBlock::ToolUse(t) => {
                     assert_eq!(t.name, "Read");
                     assert_eq!(t.input["file_path"], "/test.txt");
-                }
+                },
                 _ => panic!("Expected tool use"),
             }
-        }
+        },
         _ => panic!("Expected Assistant message"),
     }
 }

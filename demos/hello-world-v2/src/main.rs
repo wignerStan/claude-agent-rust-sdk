@@ -27,32 +27,36 @@ async fn basic_session() -> Result<()> {
 
     println!("Creating session...");
 
-    let mut stream = client.query("Hello! My name is Alice.").await?;
-    let mut messages = Vec::new();
+    let response = {
+        let mut stream = client.query("Hello! My name is Alice.").await?;
+        let mut messages = Vec::new();
 
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(message) => {
-                messages.push(message.clone());
-                if let claude_agent_types::Message::Assistant(msg) = message {
-                    for block in msg.content {
-                        if let claude_agent_types::message::ContentBlock::Text(text) = block {
-                            println!("Claude: {}", text.text);
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(message) => {
+                    messages.push(message.clone());
+                    if let claude_agent_types::Message::Assistant(msg) = message {
+                        for block in msg.content {
+                            if let claude_agent_types::message::ContentBlock::Text(text) = block {
+                                println!("Claude: {}", text.text);
+                            }
                         }
                     }
                 }
+                Err(e) => eprintln!("Error: {}", e),
             }
-            Err(e) => eprintln!("Error: {}", e),
         }
-    }
+        messages
+    };
 
     client.disconnect().await.context("Failed to disconnect")?;
 
-    println!("\nSession completed with {} messages", messages.len());
+    println!("\nSession completed with {} messages", response.len());
     Ok(())
 }
 
 /// Session resumption example.
+#[allow(dead_code)]
 async fn resume_session(session_id: String) -> Result<()> {
     println!("\n=== Session Resumption Example ===\n");
     println!("Resuming session: {}\n", session_id);
@@ -67,22 +71,24 @@ async fn resume_session(session_id: String) -> Result<()> {
 
     println!("Sending follow-up message...");
 
-    let mut stream = client.query("What's my name?").await?;
+    {
+        let mut stream = client.query("What's my name?").await?;
 
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(message) => {
-                if let claude_agent_types::Message::Assistant(msg) = message {
-                    for block in msg.content {
-                        if let claude_agent_types::message::ContentBlock::Text(text) = block {
-                            println!("Claude: {}", text.text);
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(message) => {
+                    if let claude_agent_types::Message::Assistant(msg) = message {
+                        for block in msg.content {
+                            if let claude_agent_types::message::ContentBlock::Text(text) = block {
+                                println!("Claude: {}", text.text);
+                            }
                         }
                     }
                 }
+                Err(e) => eprintln!("Error: {}", e),
             }
-            Err(e) => eprintln!("Error: {}", e),
         }
-    }
+    };
 
     client.disconnect().await.context("Failed to disconnect")?;
 
@@ -102,7 +108,7 @@ async fn multi_turn_conversation() -> Result<()> {
     let mut client = ClaudeAgentClient::new(Some(options));
     client.connect().await.context("Failed to connect")?;
 
-    let prompts = vec![
+    let prompts = [
         "I'm learning Rust programming.",
         "What are the key features of Rust?",
         "Can you explain ownership and borrowing?",

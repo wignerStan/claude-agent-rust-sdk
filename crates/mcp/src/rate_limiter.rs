@@ -25,36 +25,24 @@ pub struct RateLimitConfig {
 
 impl Default for RateLimitConfig {
     fn default() -> Self {
-        Self {
-            requests_per_second: 10,
-            burst_size: 20,
-        }
+        Self { requests_per_second: 10, burst_size: 20 }
     }
 }
 
 impl RateLimitConfig {
     /// Create a new rate limit configuration.
     pub fn new(requests_per_second: u32, burst_size: u32) -> Self {
-        Self {
-            requests_per_second,
-            burst_size,
-        }
+        Self { requests_per_second, burst_size }
     }
 
     /// Create a permissive rate limit (high throughput).
     pub fn permissive() -> Self {
-        Self {
-            requests_per_second: 100,
-            burst_size: 200,
-        }
+        Self { requests_per_second: 100, burst_size: 200 }
     }
 
     /// Create a strict rate limit (low throughput).
     pub fn strict() -> Self {
-        Self {
-            requests_per_second: 5,
-            burst_size: 10,
-        }
+        Self { requests_per_second: 5, burst_size: 10 }
     }
 }
 
@@ -71,9 +59,13 @@ impl RateLimiter {
     /// Create a new rate limiter with the given configuration.
     pub fn new(config: RateLimitConfig) -> Self {
         let quota = Quota::per_second(
-            NonZeroU32::new(config.requests_per_second).unwrap_or(NonZeroU32::new(1).unwrap()),
+            NonZeroU32::new(config.requests_per_second)
+                .unwrap_or_else(|| NonZeroU32::new(1).expect("1 is non-zero")),
         )
-        .allow_burst(NonZeroU32::new(config.burst_size).unwrap_or(NonZeroU32::new(1).unwrap()));
+        .allow_burst(
+            NonZeroU32::new(config.burst_size)
+                .unwrap_or_else(|| NonZeroU32::new(1).expect("1 is non-zero")),
+        );
 
         let limiter = Arc::new(GovernorRateLimiter::direct(quota));
 
@@ -104,9 +96,7 @@ impl RateLimiter {
     /// Returns `true` if the request was allowed within the timeout,
     /// `false` if the timeout expired.
     pub async fn wait_with_timeout(&self, timeout: Duration) -> bool {
-        tokio::time::timeout(timeout, self.limiter.until_ready())
-            .await
-            .is_ok()
+        tokio::time::timeout(timeout, self.limiter.until_ready()).await.is_ok()
     }
 
     /// Get the current configuration.
@@ -123,9 +113,7 @@ impl Default for RateLimiter {
 
 impl std::fmt::Debug for RateLimiter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RateLimiter")
-            .field("config", &self.config)
-            .finish()
+        f.debug_struct("RateLimiter").field("config", &self.config).finish()
     }
 }
 

@@ -137,14 +137,7 @@ pub struct SubprocessTransport {
 impl SubprocessTransport {
     /// Create a new subprocess transport.
     pub fn new(prompt: Option<String>, options: ClaudeAgentOptions) -> Self {
-        Self {
-            options,
-            prompt,
-            process: None,
-            stdin: None,
-            inbox: None,
-            reader_abort_handle: None,
-        }
+        Self { options, prompt, process: None, stdin: None, inbox: None, reader_abort_handle: None }
     }
 
     /// Find the Claude Code CLI binary.
@@ -260,14 +253,14 @@ impl SubprocessTransport {
                 SystemPromptConfig::Text(text) => {
                     cmd.arg("--system-prompt");
                     cmd.arg(text);
-                }
+                },
                 SystemPromptConfig::Preset(SystemPromptPreset::Preset { preset: _, append }) => {
                     // Preset is usually implicit or default, but if there's an append:
                     if let Some(append_text) = append {
                         cmd.arg("--append-system-prompt");
                         cmd.arg(append_text);
                     }
-                }
+                },
             }
         }
 
@@ -339,11 +332,8 @@ impl SubprocessTransport {
 
         // Extra args
         for (flag, value) in &self.options.extra_args {
-            let flag_str = if flag.starts_with("--") {
-                flag.clone()
-            } else {
-                format!("--{}", flag)
-            };
+            let flag_str =
+                if flag.starts_with("--") { flag.clone() } else { format!("--{}", flag) };
             cmd.arg(flag_str);
             if let Some(v) = value {
                 cmd.arg(v);
@@ -351,9 +341,7 @@ impl SubprocessTransport {
         }
 
         // Configure stdio
-        cmd.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());
 
         Ok(cmd)
     }
@@ -364,66 +352,63 @@ impl Transport for SubprocessTransport {
     async fn connect(&mut self) -> Result<(), ClaudeAgentError> {
         // Add timeout to prevent hanging indefinitely
         const CONNECT_TIMEOUT_SECS: u64 = 30;
-        tokio::time::timeout(
-            tokio::time::Duration::from_secs(CONNECT_TIMEOUT_SECS),
-            async {
-                let mut cmd = self.build_command()?;
-                let mut child = cmd.spawn().map_err(|e| {
-                    ClaudeAgentError::CLIConnection(format!("Failed to spawn CLI process: {}", e))
-                })?;
+        tokio::time::timeout(tokio::time::Duration::from_secs(CONNECT_TIMEOUT_SECS), async {
+            let mut cmd = self.build_command()?;
+            let mut child = cmd.spawn().map_err(|e| {
+                ClaudeAgentError::CLIConnection(format!("Failed to spawn CLI process: {}", e))
+            })?;
 
-                // Take ownership of stdin
-                let stdin = child.stdin.take().ok_or_else(|| {
-                    ClaudeAgentError::CLIConnection("Failed to get stdin handle".to_string())
-                })?;
-                self.stdin = Some(Arc::new(Mutex::new(stdin)));
+            // Take ownership of stdin
+            let stdin = child.stdin.take().ok_or_else(|| {
+                ClaudeAgentError::CLIConnection("Failed to get stdin handle".to_string())
+            })?;
+            self.stdin = Some(Arc::new(Mutex::new(stdin)));
 
-                // Take ownership of stdout and spawn reader task
-                let stdout = child.stdout.take().ok_or_else(|| {
-                    ClaudeAgentError::CLIConnection("Failed to get stdout handle".to_string())
-                })?;
+            // Take ownership of stdout and spawn reader task
+            let stdout = child.stdout.take().ok_or_else(|| {
+                ClaudeAgentError::CLIConnection("Failed to get stdout handle".to_string())
+            })?;
 
-                // precise capacity
-                const BROADCAST_CHANNEL_CAPACITY: usize = 1000;
-                let (tx, _) = tokio::sync::broadcast::channel(BROADCAST_CHANNEL_CAPACITY);
-                self.inbox = Some(tx.clone());
+            // precise capacity
+            const BROADCAST_CHANNEL_CAPACITY: usize = 1000;
+            let (tx, _) = tokio::sync::broadcast::channel(BROADCAST_CHANNEL_CAPACITY);
+            self.inbox = Some(tx.clone());
 
-                let abort_handle = tokio::spawn(async move {
-                    use crate::reader::MessageReader;
-                    use futures::StreamExt;
+            let abort_handle = tokio::spawn(async move {
+                use crate::reader::MessageReader;
+                use futures::StreamExt;
 
-                    let reader = MessageReader::new(stdout);
-                    let mut stream = Box::pin(reader);
+                let reader = MessageReader::new(stdout);
+                let mut stream = Box::pin(reader);
 
-                    while let Some(msg_res) = stream.next().await {
-                        // Determine if we should stop?
-                        // If everyone disconnected?
-                        // For now, keep reading until EOF or error.
+                while let Some(msg_res) = stream.next().await {
+                    // Determine if we should stop?
+                    // If everyone disconnected?
+                    // For now, keep reading until EOF or error.
 
-                        // We map parse errors or logic errors from reader
-                        // reader returns Result<Value, ClaudeAgentError>
+                    // We map parse errors or logic errors from reader
+                    // reader returns Result<Value, ClaudeAgentError>
 
-                        if tx.send(msg_res).is_err() {
-                            // No subscribers left, but we should keep reading to drain stdout?
-                            // Or maybe just exit.
-                            // Ideally we keep reading because a new subscriber might appear (Next Turn).
-                            // But broadcast channel returns error only if there are NO receivers?
-                            // "SendError if there are no active receivers"
-                            // In our case, Agent drops stream between turns.
-                            // So there might be moments with 0 receivers.
-                            // We should ignore SendError and continue.
-                        }
+                    if tx.send(msg_res).is_err() {
+                        // No subscribers left, but we should keep reading to drain stdout?
+                        // Or maybe just exit.
+                        // Ideally we keep reading because a new subscriber might appear (Next Turn).
+                        // But broadcast channel returns error only if there are NO receivers?
+                        // "SendError if there are no active receivers"
+                        // In our case, Agent drops stream between turns.
+                        // So there might be moments with 0 receivers.
+                        // We should ignore SendError and continue.
                     }
-                })
-                .abort_handle();
+                }
+            })
+            .abort_handle();
 
-                self.reader_abort_handle = Some(abort_handle);
+            self.reader_abort_handle = Some(abort_handle);
 
-                self.process = Some(child);
+            self.process = Some(child);
 
-                Ok::<(), ClaudeAgentError>(())
-            },
-        )
+            Ok::<(), ClaudeAgentError>(())
+        })
         .await
         .map_err(|_| {
             ClaudeAgentError::CLIConnection(format!(
@@ -469,16 +454,13 @@ impl Transport for SubprocessTransport {
 
                 Box::pin(stream.map(|item| match item {
                     Ok(payload) => payload,
-                    Err(e) => Err(ClaudeAgentError::Transport(format!(
-                        "Broadcast receive error: {}",
-                        e
-                    ))),
+                    Err(e) => {
+                        Err(ClaudeAgentError::Transport(format!("Broadcast receive error: {}", e)))
+                    },
                 }))
-            }
+            },
             None => Box::pin(stream::once(async {
-                Err(ClaudeAgentError::Transport(
-                    "Transport not connected".to_string(),
-                ))
+                Err(ClaudeAgentError::Transport("Transport not connected".to_string()))
             })),
         }
     }
@@ -512,9 +494,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_options() -> ClaudeAgentOptions {
-        ClaudeAgentOptions {
-            ..Default::default()
-        }
+        ClaudeAgentOptions { ..Default::default() }
     }
 
     #[test]
@@ -630,10 +610,7 @@ mod tests {
     #[test]
     fn test_build_command_with_add_dirs() {
         let mut options = make_options();
-        options.add_dirs = vec![
-            PathBuf::from("/path/to/dir1"),
-            PathBuf::from("/path/to/dir2"),
-        ];
+        options.add_dirs = vec![PathBuf::from("/path/to/dir1"), PathBuf::from("/path/to/dir2")];
 
         let transport = SubprocessTransport::new(Some("test".to_string()), options);
         let cmd = transport.build_command().expect("Failed to build command");

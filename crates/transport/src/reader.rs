@@ -145,11 +145,7 @@ impl<R: AsyncRead> MessageReader<R> {
     /// let reader = MessageReader::with_capacity(stdout, 1024 * 1024);
     /// ```
     pub fn with_capacity(inner: R, max_size: usize) -> Self {
-        Self {
-            reader: BufReader::new(inner),
-            buffer: String::new(),
-            max_buffer_size: max_size,
-        }
+        Self { reader: BufReader::new(inner), buffer: String::new(), max_buffer_size: max_size }
     }
 }
 
@@ -174,11 +170,11 @@ impl<R: AsyncRead + Unpin> Stream for MessageReader<R> {
                         // Consumed one object
                         this.buffer.drain(..offset);
                         return Poll::Ready(Some(Ok(val)));
-                    }
+                    },
                     Some(Err(ref e)) if e.is_eof() => {
                         // Incomplete JSON, need more data.
                         // Break out of match to read more.
-                    }
+                    },
                     Some(Err(e)) => {
                         // Syntax error or other error
                         // If it's just "trailing characters", that shouldn't happen with into_iter (it handles stream).
@@ -190,7 +186,7 @@ impl<R: AsyncRead + Unpin> Stream for MessageReader<R> {
                             "Parse error: {}. Buffer preview: {}",
                             e, preview
                         )))));
-                    }
+                    },
                     None => {
                         // Buffer might be empty or just whitespace
                         if this.buffer.trim().is_empty() {
@@ -201,7 +197,7 @@ impl<R: AsyncRead + Unpin> Stream for MessageReader<R> {
                             // Actually it means only whitespace.
                             this.buffer.clear();
                         }
-                    }
+                    },
                 }
             }
 
@@ -220,12 +216,12 @@ impl<R: AsyncRead + Unpin> Stream for MessageReader<R> {
                                 Ok(val) => {
                                     this.buffer.clear();
                                     return Poll::Ready(Some(Ok(val)));
-                                }
+                                },
                                 Err(e) => {
                                     return Poll::Ready(Some(Err(ClaudeAgentError::JSONDecode(
                                         format!("EOF with invalid json: {}", e),
                                     ))));
-                                }
+                                },
                             }
                         }
                         return Poll::Ready(None);
@@ -240,10 +236,10 @@ impl<R: AsyncRead + Unpin> Stream for MessageReader<R> {
                         ))));
                     }
                     // Loop back to try parsing
-                }
+                },
                 Poll::Ready(Err(e)) => {
                     return Poll::Ready(Some(Err(ClaudeAgentError::Transport(e.to_string()))))
-                }
+                },
                 Poll::Pending => return Poll::Pending,
             }
         }

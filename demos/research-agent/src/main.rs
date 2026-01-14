@@ -185,7 +185,7 @@ pub fn create_agents() -> HashMap<String, AgentDefinition> {
                 "Write".to_string(),
                 "Read".to_string(),
             ]),
-            model: Some("haiku".to_string()),
+            model: std::env::var("ANTHROPIC_MODEL").ok(),
         },
     );
 
@@ -200,7 +200,7 @@ pub fn create_agents() -> HashMap<String, AgentDefinition> {
                 "Bash".to_string(),
                 "Write".to_string(),
             ]),
-            model: Some("haiku".to_string()),
+            model: std::env::var("ANTHROPIC_MODEL").ok(),
         },
     );
 
@@ -216,7 +216,7 @@ pub fn create_agents() -> HashMap<String, AgentDefinition> {
                 "Read".to_string(),
                 "Bash".to_string(),
             ]),
-            model: Some("haiku".to_string()),
+            model: std::env::var("ANTHROPIC_MODEL").ok(),
         },
     );
 

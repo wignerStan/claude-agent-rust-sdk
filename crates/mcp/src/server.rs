@@ -24,10 +24,7 @@ pub struct SdkMcpServer {
 impl SdkMcpServer {
     /// Create new SDK server.
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            tools: HashMap::new(),
-        }
+        Self { name: name.into(), tools: HashMap::new() }
     }
 
     /// Register a tool.
@@ -42,11 +39,7 @@ impl SdkMcpServer {
         Fut: Future<Output = Result<Value, ClaudeAgentError>> + Send + 'static,
     {
         let name = name.into();
-        let info = ToolInfo {
-            name: name.clone(),
-            description,
-            input_schema,
-        };
+        let info = ToolInfo { name: name.clone(), description, input_schema };
 
         // Box the handler to handle generic Future return type
         let boxed_handler = Box::new(move |args| {
@@ -98,7 +91,7 @@ impl McpServer for SdkMcpServer {
                         }
                     }
                 }))
-            }
+            },
             Some("tools/list") => {
                 let tools = self.list_tools().await?;
                 // Convert ToolInfo to schema expected by JSON-RPC (which might just be list of tools)
@@ -111,7 +104,7 @@ impl McpServer for SdkMcpServer {
                         "tools": tools
                     }
                 }))
-            }
+            },
             Some("tools/call") => {
                 if let Some(p) = params {
                     let name = p.get("name").and_then(|n| n.as_str());
@@ -129,7 +122,7 @@ impl McpServer for SdkMcpServer {
                                     "id": id,
                                     "result": result
                                 }))
-                            }
+                            },
                             Err(e) => {
                                 // Return JSON-RPC error inside 200 OK wrapper if possible?
                                 // Or just error field?
@@ -141,7 +134,7 @@ impl McpServer for SdkMcpServer {
                                         "message": e.to_string()
                                     }
                                 }))
-                            }
+                            },
                         }
                     } else {
                         Ok(serde_json::json!({
@@ -157,7 +150,7 @@ impl McpServer for SdkMcpServer {
                         "error": { "code": -32602, "message": "Missing params" }
                     }))
                 }
-            }
+            },
             Some("notifications/initialized") => Ok(serde_json::json!({
                 "jsonrpc": "2.0",
                 "result": {}

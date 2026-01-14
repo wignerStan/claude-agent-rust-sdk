@@ -18,10 +18,7 @@ struct MockTransport {
 
 impl MockTransport {
     fn new(responses: Vec<serde_json::Value>) -> Self {
-        Self {
-            sent_data: Arc::new(Mutex::new(Vec::new())),
-            responses,
-        }
+        Self { sent_data: Arc::new(Mutex::new(Vec::new())), responses }
     }
 }
 

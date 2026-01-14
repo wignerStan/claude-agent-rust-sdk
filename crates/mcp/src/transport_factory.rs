@@ -186,10 +186,7 @@ mod tests {
 
     #[test]
     fn test_http_server_missing_url() {
-        let config = McpServerConfig {
-            transport: McpTransportType::Http,
-            ..Default::default()
-        };
+        let config = McpServerConfig { transport: McpTransportType::Http, ..Default::default() };
 
         let result = create_mcp_server("test".to_string(), config);
         assert!(result.is_err());
@@ -197,10 +194,7 @@ mod tests {
 
     #[test]
     fn test_stdio_server_missing_command() {
-        let config = McpServerConfig {
-            transport: McpTransportType::Stdio,
-            ..Default::default()
-        };
+        let config = McpServerConfig { transport: McpTransportType::Stdio, ..Default::default() };
 
         let result = create_mcp_server("test".to_string(), config);
         assert!(result.is_err());

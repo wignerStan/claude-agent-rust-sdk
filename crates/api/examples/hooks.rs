@@ -15,10 +15,7 @@ fn main() {
             println!("  Tool: {:?}", input.tool_name);
             println!("  Input: {:?}", input.tool_input);
 
-            Ok(HookOutput {
-                continue_execution: true,
-                ..Default::default()
-            })
+            Ok(HookOutput { continue_execution: true, ..Default::default() })
         })
     });
 
@@ -36,12 +33,7 @@ fn main() {
         })
     });
 
-    registry.register(
-        HookEvent::PreToolUse,
-        Some("Write|Edit".to_string()),
-        write_hook,
-        None,
-    );
+    registry.register(HookEvent::PreToolUse, Some("Write|Edit".to_string()), write_hook, None);
 
     println!("Hook registry configured with 2 hooks");
     println!("These would be triggered during ClaudeAgent query execution");

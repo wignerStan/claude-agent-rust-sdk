@@ -21,9 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.connect().await?;
 
     {
-        let mut stream = client
-            .query("List the files in the current directory")
-            .await?;
+        let mut stream = client.query("List the files in the current directory").await?;
         while let Some(result) = stream.next().await {
             if let Ok(msg) = result {
                 println!("{:?}", msg);

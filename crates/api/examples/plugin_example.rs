@@ -27,9 +27,7 @@ impl Plugin for PrefixPlugin {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a plugin
-    let plugin = PrefixPlugin {
-        prefix: "[IMPORTANT]".to_string(),
-    };
+    let plugin = PrefixPlugin { prefix: "[IMPORTANT]".to_string() };
 
     println!("Plugin '{}' loaded", plugin.name());
 

@@ -120,9 +120,7 @@ impl From<WireUserMessage> for UserMessage {
 impl From<UserMessage> for WireUserMessage {
     fn from(msg: UserMessage) -> Self {
         Self {
-            message: UserMessageBody {
-                content: msg.content,
-            },
+            message: UserMessageBody { content: msg.content },
             uuid: msg.uuid,
             parent_tool_use_id: msg.parent_tool_use_id,
         }
@@ -185,10 +183,7 @@ impl From<WireAssistantMessage> for AssistantMessage {
 impl From<AssistantMessage> for WireAssistantMessage {
     fn from(msg: AssistantMessage) -> Self {
         Self {
-            message: AssistantMessageBody {
-                content: msg.content,
-                model: msg.model,
-            },
+            message: AssistantMessageBody { content: msg.content, model: msg.model },
             parent_tool_use_id: msg.parent_tool_use_id,
             error: msg.error,
         }

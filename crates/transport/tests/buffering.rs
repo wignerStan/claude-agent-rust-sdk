@@ -58,7 +58,7 @@ async fn test_multiple_objects_one_line() {
             // "stdout buffering can cause multiple distinct JSON objects to be delivered as a single line"
             // This implies we MUST support it.
             assert_eq!(val["id"], 1);
-        }
+        },
         Some(Err(e)) => panic!("Failed to parse first object: {}", e),
         None => panic!("Stream ended unexpectedly"),
     }
@@ -67,7 +67,7 @@ async fn test_multiple_objects_one_line() {
     match res2 {
         Some(Ok(val)) => {
             assert_eq!(val["id"], 2);
-        }
+        },
         Some(Err(e)) => panic!("Failed to parse second object: {}", e),
         None => panic!("Stream ended before second object"),
     }

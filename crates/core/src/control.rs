@@ -61,10 +61,7 @@ impl ControlProtocol {
     pub fn new() -> (Self, mpsc::Receiver<ControlRequest>) {
         let (tx, rx) = mpsc::channel(32);
         (
-            Self {
-                pending_requests: Arc::new(Mutex::new(HashMap::new())),
-                request_tx: tx,
-            },
+            Self { pending_requests: Arc::new(Mutex::new(HashMap::new())), request_tx: tx },
             rx,
         )
     }
@@ -84,10 +81,7 @@ impl ControlProtocol {
         }
 
         // Send request
-        let request = ControlRequest {
-            request_id: request_id.clone(),
-            request: request_type,
-        };
+        let request = ControlRequest { request_id: request_id.clone(), request: request_type };
 
         self.request_tx.send(request).await.map_err(|e| {
             ClaudeAgentError::ControlProtocol(format!("Failed to send request: {}", e))
@@ -118,10 +112,7 @@ impl ControlProtocol {
         &self,
         mode: &str,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        self.send_request(ControlRequestType::SetPermissionMode {
-            mode: mode.to_string(),
-        })
-        .await
+        self.send_request(ControlRequestType::SetPermissionMode { mode: mode.to_string() }).await
     }
 
     /// Send set model request.
@@ -129,10 +120,8 @@ impl ControlProtocol {
         &self,
         model: Option<&str>,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        self.send_request(ControlRequestType::SetModel {
-            model: model.map(|s| s.to_string()),
-        })
-        .await
+        self.send_request(ControlRequestType::SetModel { model: model.map(|s| s.to_string()) })
+            .await
     }
 
     /// Send rewind files request.

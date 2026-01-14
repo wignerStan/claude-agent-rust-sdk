@@ -151,7 +151,7 @@ impl SessionManager {
         let session_id = Uuid::new_v4().to_string();
 
         let options = ClaudeAgentOptions {
-            model: Some("claude-sonnet-4-5".to_string()),
+            model: std::env::var("ANTHROPIC_MODEL").ok(),
             ..Default::default()
         };
 

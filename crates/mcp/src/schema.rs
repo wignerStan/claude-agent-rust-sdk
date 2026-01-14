@@ -25,20 +25,12 @@ impl ToolDefinition {
         description: Option<String>,
         input_schema: serde_json::Value,
     ) -> Self {
-        Self {
-            name: name.into(),
-            description,
-            input_schema,
-        }
+        Self { name: name.into(), description, input_schema }
     }
 
     /// Create a tool definition from a type with JsonSchema.
     pub fn from_type<T: JsonSchema>(name: impl Into<String>, description: Option<String>) -> Self {
-        Self {
-            name: name.into(),
-            description,
-            input_schema: generate_schema::<T>(),
-        }
+        Self { name: name.into(), description, input_schema: generate_schema::<T>() }
     }
 }
 
