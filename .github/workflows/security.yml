@@ -74,4 +74,4 @@ jobs:
         run: cargo install cargo-semver-checks
 
       - name: Check semver compliance
-        run: cargo semver-checks check-release
+        run: cargo semver-checks check
