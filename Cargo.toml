@@ -22,7 +22,7 @@ futures = "0.3"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 which = "6.0"
 rmcp = { version = "0.8.0", features = ["server", "client"] }
-schemars = "0.8"
+schemars = "1.2"
 tokio-util = "0.7"
 tokio-stream = "0.1"
 secrecy = { version = "0.8", features = ["serde"] }
