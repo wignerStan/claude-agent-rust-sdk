@@ -25,7 +25,7 @@ rmcp = { version = "0.8.0", features = ["server", "client"] }
 schemars = "0.8"
 tokio-util = "0.7"
 tokio-stream = "0.1"
-secrecy = { version = "0.8", features = ["serde"] }
+secrecy = { version = "0.10", features = ["serde"] }
 subtle = "2.5"
 proptest = "1.4"
 governor = "0.6"
