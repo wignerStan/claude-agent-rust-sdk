@@ -22,7 +22,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo registry and index
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -32,7 +32,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target
           key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
@@ -85,7 +85,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
 
       - name: Cache cargo registry and index
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -95,7 +95,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.rust }}-cargo-
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target
           key: ${{ runner.os }}-${{ matrix.rust }}-build-${{ hashFiles('**/Cargo.lock') }}
@@ -118,7 +118,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry and index
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -128,7 +128,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target
           key: ${{ runner.os }}-release-build-${{ hashFiles('**/Cargo.lock') }}
