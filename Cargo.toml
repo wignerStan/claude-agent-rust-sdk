@@ -12,7 +12,7 @@ members = [
 tokio = { version = "1.35", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -20,17 +20,18 @@ async-trait = "0.1"
 async-stream = "0.3"
 futures = "0.3"
 uuid = { version = "1.6", features = ["v4", "serde"] }
-which = "6.0"
-rmcp = { version = "0.8.0", features = ["server", "client"] }
-schemars = "0.8"
+which = "8.0"
+rmcp = { version = "0.13.0", features = ["server", "client"] }
+schemars = "1.2"
 tokio-util = "0.7"
 tokio-stream = "0.1"
-secrecy = { version = "0.8", features = ["serde"] }
+secrecy = { version = "0.10", features = ["serde"] }
 subtle = "2.5"
 proptest = "1.4"
-governor = "0.6"
-criterion = "0.5"
-reqwest = { version = "0.11", features = ["json"] }
+governor = "0.10"
+criterion = "0.8"
+reqwest = { version = "0.13", features = ["json"] }
+dirs = "6.0"
 pin-project-lite = "0.2"
 
 [workspace.package]
