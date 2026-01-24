@@ -12,6 +12,6 @@ serde.workspace = true
 serde_json.workspace = true
 claude-agent-types = { path = "../types" }
 which = { workspace = true }
-dirs = "4.0"
+dirs = "6.0"
 pin-project-lite = "0.2"
 tokio-stream = { workspace = true, features = ["sync"] }

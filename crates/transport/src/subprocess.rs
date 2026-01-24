@@ -492,9 +492,38 @@ mod tests {
     use claude_agent_types::config::{PermissionMode, SystemPromptConfig, SystemPromptPreset};
     use serde_json::json;
     use std::collections::HashMap;
+    use std::fs::{self, File};
+    use std::io::Write;
+
+    fn dummy_cli_path() -> &'static std::path::PathBuf {
+        static PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+        PATH.get_or_init(|| {
+            let mut temp_dir = std::env::temp_dir();
+            temp_dir.push("dummy_claude_cli");
+            let file_path = temp_dir;
+
+            // Create the dummy executable
+            let mut file = File::create(&file_path).expect("failed to create dummy CLI");
+            writeln!(file, "#!/bin/sh").expect("failed to write shebang");
+            writeln!(file, "exit 0").expect("failed to write exit");
+
+            // Make executable on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = fs::metadata(&file_path).expect("metadata failed").permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&file_path, perms).expect("set_permissions failed");
+            }
+
+            file_path
+        })
+    }
 
     fn make_options() -> ClaudeAgentOptions {
-        ClaudeAgentOptions { ..Default::default() }
+        let mut options = ClaudeAgentOptions { ..Default::default() };
+        options.cli_path = Some(dummy_cli_path().clone());
+        options
     }
 
     #[test]

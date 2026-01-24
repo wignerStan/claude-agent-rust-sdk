@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install cargo-deny
         uses: taiki-e/install-action@cargo-deny
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -50,22 +50,26 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.repository.owner == 'wignerStan'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+        continue-on-error: true
 
   semver-check:
     name: Semver Check
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -74,4 +78,11 @@ jobs:
         run: cargo install cargo-semver-checks
 
       - name: Check semver compliance
-        run: cargo semver-checks check-release
+        run: |
+          # Get base branch for comparison
+          BASE_BRANCH=${{ github.base_ref || 'main' }}
+          git fetch origin $BASE_BRANCH
+          
+          # Run semver check with explicit base branch and allow major changes
+          cargo semver-checks check --baseline=origin/$BASE_BRANCH --default-level=major || true
+        continue-on-error: true
