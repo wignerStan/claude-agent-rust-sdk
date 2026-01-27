@@ -19,7 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 async-trait = "0.1"
 async-stream = "0.3"
 futures = "0.3"
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.20", features = ["v4", "serde"] }
 which = "8.0"
 rmcp = { version = "0.14.0", features = ["server", "client"] }
 schemars = "1.2"
