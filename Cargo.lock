@@ -276,15 +276,20 @@ name = "claude-agent-api"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "claude-agent-core",
  "claude-agent-mcp",
  "claude-agent-transport",
  "claude-agent-types",
+ "dirs",
  "futures",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "which",
 ]
 

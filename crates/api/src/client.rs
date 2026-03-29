@@ -104,4 +104,94 @@ impl ClaudeAgentClient {
     pub fn session_id(&self) -> Option<&str> {
         self.agent.current_session().map(|s| s.id.as_str())
     }
+
+    // TODO: Implement when core agent methods are available
+
+    /// Rewind files to their state before a specific user message.
+    ///
+    /// This undoes all file modifications made since the given user message
+    /// was sent, restoring the filesystem to its prior state.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_message_id` - The ID of the user message to rewind to.
+    pub async fn rewind_files(
+        &self,
+        _user_message_id: &str,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
+
+    /// Stop a running task.
+    ///
+    /// Sends a signal to stop the currently executing task identified by the
+    /// given task ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` - The ID of the task to stop.
+    pub async fn stop_task(&self, _task_id: &str) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
+
+    /// Get the status of all configured MCP servers.
+    ///
+    /// Returns information about connected, disconnected, and errored MCP servers.
+    pub async fn get_mcp_status(&self) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
+
+    /// Reconnect a disconnected MCP server.
+    ///
+    /// Attempts to re-establish the connection to an MCP server that has
+    /// been disconnected or has errored.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the MCP server to reconnect.
+    pub async fn reconnect_mcp_server(
+        &self,
+        _name: &str,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
+
+    /// Enable or disable an MCP server.
+    ///
+    /// Toggles the enabled state of a named MCP server. When disabled, the
+    /// server remains configured but will not be used for tool calls.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the MCP server.
+    /// * `enabled` - Whether the server should be enabled.
+    pub async fn toggle_mcp_server(
+        &self,
+        _name: &str,
+        _enabled: bool,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
+
+    /// Get current context window usage.
+    ///
+    /// Returns information about how much of the context window has been
+    /// consumed, including token counts and usage percentages.
+    pub async fn get_context_usage(&self) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
+
+    /// Get information about the Claude Code server.
+    ///
+    /// Returns server version, configuration, and capabilities information.
+    pub async fn get_server_info(&self) -> Result<ControlResponse, ClaudeAgentError> {
+        // TODO: Implement when core agent methods are available
+        Err(ClaudeAgentError::Transport("Not yet implemented: core support pending".into()))
+    }
 }
