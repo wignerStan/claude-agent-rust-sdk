@@ -264,7 +264,28 @@ impl SubprocessTransport {
             }
         }
 
-        // Tools
+        // Tools configuration
+        if let Some(ref tools) = self.options.tools {
+            use claude_agent_types::config::ToolsConfig;
+            match tools {
+                ToolsConfig::List(list) => {
+                    if !list.is_empty() {
+                        cmd.arg("--tools");
+                        cmd.arg(list.join(","));
+                    }
+                },
+                ToolsConfig::Preset(preset) => {
+                    cmd.arg("--tools");
+                    cmd.arg(match preset {
+                        claude_agent_types::config::ToolsPreset::Preset { ref preset } => {
+                            preset.as_str()
+                        },
+                    });
+                },
+            }
+        }
+
+        // Allowed and disallowed tools
         if !self.options.allowed_tools.is_empty() {
             cmd.arg("--allowedTools");
             cmd.arg(self.options.allowed_tools.join(","));
@@ -290,14 +311,142 @@ impl SubprocessTransport {
             cmd.arg(mode.to_string());
         }
 
+        // Permission prompt tool name
+        if let Some(ref tool_name) = self.options.permission_prompt_tool_name {
+            cmd.arg("--permission-prompt-tool");
+            cmd.arg(tool_name);
+        }
+
         // Limits
         if let Some(turns) = self.options.max_turns {
             cmd.arg("--max-turns");
             cmd.arg(turns.to_string());
         }
-        if let Some(tokens) = self.options.max_thinking_tokens {
+
+        // Max budget (USD)
+        if let Some(budget) = self.options.max_budget_usd {
+            cmd.arg("--max-budget-usd");
+            cmd.arg(budget.to_string());
+        }
+
+        // Thinking configuration (prefer thinking struct over legacy field)
+        if let Some(ref thinking) = self.options.thinking {
+            if let Some(max_tokens) = thinking.max_tokens {
+                cmd.arg("--max-thinking-tokens");
+                cmd.arg(max_tokens.to_string());
+            }
+        } else if let Some(tokens) = self.options.max_thinking_tokens {
+            // Fallback to legacy max_thinking_tokens if thinking not set
             cmd.arg("--max-thinking-tokens");
             cmd.arg(tokens.to_string());
+        }
+
+        // Effort level
+        if let Some(ref effort) = self.options.effort {
+            cmd.arg("--effort");
+            cmd.arg(effort.to_string());
+        } else if let Some(ref thinking) = self.options.thinking {
+            // Derive effort from thinking config if not set directly
+            if let Some(ref thinking_effort) = thinking.effort {
+                cmd.arg("--effort");
+                cmd.arg(thinking_effort.to_string());
+            }
+        }
+
+        // Task budget
+        if let Some(ref budget) = self.options.task_budget {
+            cmd.arg("--task-budget");
+            cmd.arg(serde_json::to_string(budget).map_err(|e| {
+                ClaudeAgentError::CLIConnection(format!("Failed to serialize task budget: {}", e))
+            })?);
+        }
+
+        // Betas
+        if !self.options.betas.is_empty() {
+            cmd.arg("--betas");
+            cmd.arg(self.options.betas.join(","));
+        }
+
+        // Setting sources
+        if let Some(ref sources) = self.options.setting_sources {
+            use claude_agent_types::config::SettingSource;
+            let source_strs: Vec<&str> = sources
+                .iter()
+                .map(|s| match s {
+                    SettingSource::User => "user",
+                    SettingSource::Project => "project",
+                    SettingSource::Local => "local",
+                })
+                .collect();
+            cmd.arg("--setting-sources");
+            cmd.arg(source_strs.join(","));
+        }
+
+        // Fork session flag
+        if self.options.fork_session {
+            cmd.arg("--fork-session");
+        }
+
+        // Include partial messages flag
+        if self.options.include_partial_messages {
+            cmd.arg("--include-partial-messages");
+        }
+
+        // Output format override (overrides default stream-json if set)
+        if let Some(ref format) = self.options.output_format {
+            cmd.arg("--output-format");
+            cmd.arg(format.to_string());
+        }
+
+        // Session ID
+        if let Some(ref session_id) = self.options.session_id {
+            cmd.arg("--session-id");
+            cmd.arg(session_id);
+        }
+
+        // Strict MCP config flag
+        if self.options.strict_mcp_config {
+            cmd.arg("--strict-mcp-config");
+        }
+
+        // Sandbox settings — merge into --settings JSON
+        if let Some(ref sandbox) = self.options.sandbox {
+            let sandbox_json = serde_json::to_value(sandbox).map_err(|e| {
+                ClaudeAgentError::CLIConnection(format!(
+                    "Failed to serialize sandbox settings: {}",
+                    e
+                ))
+            })?;
+            cmd.arg("--settings");
+            cmd.arg(serde_json::json!({ "sandbox": sandbox_json }).to_string());
+        }
+
+        // Plugins — repeat --plugin-dir for each plugin
+        for plugin in &self.options.plugins {
+            match plugin {
+                claude_agent_types::config::PluginConfig::Local { ref path } => {
+                    cmd.arg("--plugin-dir");
+                    cmd.arg(path.to_string_lossy().to_string());
+                },
+            }
+        }
+
+        // Agents — serialize the HashMap to JSON
+        if let Some(ref agents) = self.options.agents {
+            if !agents.is_empty() {
+                cmd.arg("--agents");
+                cmd.arg(serde_json::to_string(agents).map_err(|e| {
+                    ClaudeAgentError::CLIConnection(format!(
+                        "Failed to serialize agents config: {}",
+                        e
+                    ))
+                })?);
+            }
+        }
+
+        // File checkpointing env var
+        if self.options.enable_file_checkpointing {
+            cmd.env("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "1");
         }
 
         // Context
@@ -306,7 +455,7 @@ impl SubprocessTransport {
             cmd.arg(dir.to_string_lossy().to_string());
         }
 
-        // Session
+        // Session continuation
         if self.options.continue_conversation {
             cmd.arg("--continue");
             if let Some(ref id) = self.options.resume {
@@ -324,7 +473,7 @@ impl SubprocessTransport {
             cmd.arg(config.to_string());
         }
 
-        // Settings
+        // Settings (user-provided settings file or JSON)
         if let Some(ref settings) = self.options.settings {
             cmd.arg("--settings");
             cmd.arg(settings);
@@ -489,7 +638,11 @@ impl Transport for SubprocessTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claude_agent_types::config::{PermissionMode, SystemPromptConfig, SystemPromptPreset};
+    use claude_agent_types::config::{
+        AgentDefinition, EffortLevel, PermissionMode, PluginConfig, SettingSource,
+        SystemPromptConfig, SystemPromptPreset, TaskBudget, ThinkingConfig, ToolsConfig,
+        ToolsPreset,
+    };
     use serde_json::json;
     use std::collections::HashMap;
     use std::fs::{self, File};
@@ -716,5 +869,345 @@ mod tests {
         assert!(cmd_str.contains("mcpServers"));
         assert!(cmd_str.contains("test-server"));
         assert!(cmd_str.contains("test-cmd"));
+    }
+
+    // --- New tests for Part B: unwired CLI flags ---
+
+    #[test]
+    fn test_build_command_with_max_budget_usd() {
+        let mut options = make_options();
+        options.max_budget_usd = Some(5.50);
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--max-budget-usd"));
+        assert!(cmd_str.contains("5.5"));
+    }
+
+    #[test]
+    fn test_build_command_with_betas() {
+        let mut options = make_options();
+        options.betas = vec!["max-tokens".to_string(), "new-feature".to_string()];
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--betas"));
+        assert!(cmd_str.contains("max-tokens,new-feature"));
+    }
+
+    #[test]
+    fn test_build_command_with_permission_prompt_tool_name() {
+        let mut options = make_options();
+        options.permission_prompt_tool_name = Some("custom-tool".to_string());
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--permission-prompt-tool"));
+        assert!(cmd_str.contains("custom-tool"));
+    }
+
+    #[test]
+    fn test_build_command_with_setting_sources() {
+        let mut options = make_options();
+        options.setting_sources =
+            Some(vec![SettingSource::User, SettingSource::Project, SettingSource::Local]);
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--setting-sources"));
+        assert!(cmd_str.contains("user,project,local"));
+    }
+
+    #[test]
+    fn test_build_command_with_fork_session() {
+        let mut options = make_options();
+        options.fork_session = true;
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--fork-session"));
+    }
+
+    #[test]
+    fn test_build_command_without_fork_session() {
+        let options = make_options();
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(!cmd_str.contains("--fork-session"));
+    }
+
+    #[test]
+    fn test_build_command_with_include_partial_messages() {
+        let mut options = make_options();
+        options.include_partial_messages = true;
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--include-partial-messages"));
+    }
+
+    #[test]
+    fn test_build_command_with_tools_list() {
+        let mut options = make_options();
+        options.tools = Some(ToolsConfig::List(vec!["Read".to_string(), "Write".to_string()]));
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--tools"));
+        assert!(cmd_str.contains("Read,Write"));
+    }
+
+    #[test]
+    fn test_build_command_with_tools_preset() {
+        let mut options = make_options();
+        options.tools =
+            Some(ToolsConfig::Preset(ToolsPreset::Preset { preset: "claude_code".to_string() }));
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--tools"));
+        assert!(cmd_str.contains("claude_code"));
+    }
+
+    #[test]
+    fn test_build_command_with_output_format_override() {
+        let mut options = make_options();
+        options.output_format = Some(json!("json"));
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        // output-format should appear twice: once for default stream-json, once for override
+        // The override should come after and contain "json"
+        assert!(cmd_str.contains("json"));
+    }
+
+    #[test]
+    fn test_build_command_with_sandbox_settings() {
+        use claude_agent_types::config::SandboxSettings;
+        let mut options = make_options();
+        let mut sandbox = SandboxSettings::default();
+        sandbox.enabled = true;
+        options.sandbox = Some(sandbox);
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--settings"));
+        assert!(cmd_str.contains("sandbox"));
+    }
+
+    #[test]
+    fn test_build_command_with_plugins() {
+        let mut options = make_options();
+        options.plugins = vec![
+            PluginConfig::Local { path: PathBuf::from("/path/to/plugin1") },
+            PluginConfig::Local { path: PathBuf::from("/path/to/plugin2") },
+        ];
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--plugin-dir"));
+        assert!(cmd_str.contains("/path/to/plugin1"));
+        assert!(cmd_str.contains("/path/to/plugin2"));
+    }
+
+    #[test]
+    fn test_build_command_with_agents() {
+        let mut options = make_options();
+        let mut agents = HashMap::new();
+        agents.insert(
+            "reviewer".to_string(),
+            AgentDefinition {
+                description: "Code reviewer".to_string(),
+                prompt: "Review this code".to_string(),
+                tools: Some(vec!["Read".to_string()]),
+                model: Some("sonnet".to_string()),
+                disallowed_tools: None,
+                skills: None,
+                memory: None,
+                mcp_servers: None,
+                initial_prompt: None,
+                max_turns: None,
+            },
+        );
+        options.agents = Some(agents);
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--agents"));
+        assert!(cmd_str.contains("reviewer"));
+        assert!(cmd_str.contains("Code reviewer"));
+    }
+
+    #[test]
+    fn test_build_command_with_enable_file_checkpointing() {
+        let mut options = make_options();
+        options.enable_file_checkpointing = true;
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(
+            cmd_str.contains("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"),
+            "Expected checkpointing env var in: {cmd_str}"
+        );
+    }
+
+    #[test]
+    fn test_build_command_with_effort() {
+        let mut options = make_options();
+        options.effort = Some(EffortLevel::High);
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--effort"));
+        assert!(cmd_str.contains("high"));
+    }
+
+    #[test]
+    fn test_build_command_with_thinking_config() {
+        let mut options = make_options();
+        options.thinking = Some(ThinkingConfig { max_tokens: Some(10000), effort: None });
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--max-thinking-tokens"));
+        assert!(cmd_str.contains("10000"));
+    }
+
+    #[test]
+    fn test_build_command_with_thinking_config_effort() {
+        let mut options = make_options();
+        options.thinking =
+            Some(ThinkingConfig { max_tokens: Some(10000), effort: Some(EffortLevel::Max) });
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--max-thinking-tokens"));
+        assert!(cmd_str.contains("10000"));
+        // effort from thinking config takes effect when no direct effort is set
+        assert!(cmd_str.contains("--effort"));
+        assert!(cmd_str.contains("max"));
+    }
+
+    #[test]
+    fn test_build_command_with_thinking_config_max_tokens() {
+        let mut options = make_options();
+        // When both thinking and legacy max_thinking_tokens are set, thinking wins
+        options.thinking = Some(ThinkingConfig { max_tokens: Some(8000), effort: None });
+        options.max_thinking_tokens = Some(5000);
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--max-thinking-tokens"));
+        assert!(cmd_str.contains("8000"));
+        assert!(!cmd_str.contains("5000"));
+    }
+
+    #[test]
+    fn test_build_command_with_task_budget() {
+        let mut options = make_options();
+        options.task_budget = Some(TaskBudget { max_turns: Some(10), max_tokens: Some(50000) });
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--task-budget"));
+        assert!(cmd_str.contains("maxTurns"));
+        assert!(cmd_str.contains("10"));
+        assert!(cmd_str.contains("maxTokens"));
+        assert!(cmd_str.contains("50000"));
+    }
+
+    #[test]
+    fn test_build_command_with_session_id() {
+        let mut options = make_options();
+        options.session_id = Some("sess-abc-123".to_string());
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--session-id"));
+        assert!(cmd_str.contains("sess-abc-123"));
+    }
+
+    #[test]
+    fn test_build_command_with_strict_mcp_config() {
+        let mut options = make_options();
+        options.strict_mcp_config = true;
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--strict-mcp-config"));
+    }
+
+    #[test]
+    fn test_build_command_without_strict_mcp_config() {
+        let options = make_options();
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(!cmd_str.contains("--strict-mcp-config"));
+    }
+
+    #[test]
+    fn test_direct_effort_overrides_thinking_effort() {
+        let mut options = make_options();
+        options.effort = Some(EffortLevel::Low);
+        options.thinking =
+            Some(ThinkingConfig { max_tokens: Some(10000), effort: Some(EffortLevel::Max) });
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        // Direct effort should take precedence over thinking.effort
+        assert!(cmd_str.contains("--effort"));
+        // The first occurrence of --effort should be "low" (direct), not "max" (thinking)
+        let idx_effort = cmd_str.find("--effort").expect("should have --effort");
+        let after_effort = &cmd_str[idx_effort..];
+        // Should contain "low" soon after --effort, not "max"
+        assert!(after_effort.contains("low"));
     }
 }
