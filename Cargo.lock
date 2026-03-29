@@ -270,15 +270,20 @@ name = "claude-agent-api"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "claude-agent-core",
  "claude-agent-mcp",
  "claude-agent-transport",
  "claude-agent-types",
+ "dirs",
  "futures",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "which",
 ]
 
@@ -321,6 +326,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-agent-mcp-sdk"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "claude-agent-transport"
 version = "0.1.0"
 dependencies = [
@@ -331,6 +347,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-stream",
  "which",

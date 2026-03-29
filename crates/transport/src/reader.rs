@@ -245,3 +245,160 @@ impl<R: AsyncRead + Unpin> Stream for MessageReader<R> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::StreamExt;
+    use serde_json::json;
+    use std::io::Cursor;
+
+    #[tokio::test]
+    async fn test_reader_single_json_object() {
+        let data = json!({"type": "message", "content": "hello"});
+        let reader = Cursor::new(format!("{}\n", data).into_bytes());
+        let mut stream = MessageReader::new(reader);
+
+        let result = stream.next().await.expect("expected a value");
+        let val = result.expect("expected Ok");
+        assert_eq!(val["type"], "message");
+        assert_eq!(val["content"], "hello");
+
+        // Stream should end after one value
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reader_multiple_json_objects() {
+        let msg1 = json!({"id": 1});
+        let msg2 = json!({"id": 2});
+        let data = format!("{}\n{}\n", msg1, msg2);
+
+        let reader = Cursor::new(data.into_bytes());
+        let mut stream = MessageReader::new(reader);
+
+        let val1 = stream.next().await.expect("expected value 1").expect("expected Ok");
+        assert_eq!(val1["id"], 1);
+
+        let val2 = stream.next().await.expect("expected value 2").expect("expected Ok");
+        assert_eq!(val2["id"], 2);
+
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reader_empty_input() {
+        let reader = Cursor::new(Vec::<u8>::new());
+        let mut stream = MessageReader::new(reader);
+
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reader_incomplete_json() {
+        // Incomplete JSON: no closing brace, followed by EOF
+        let reader = Cursor::new(b"{\"type\": ".to_vec());
+        let mut stream = MessageReader::new(reader);
+
+        let result = stream.next().await.expect("expected a result");
+        assert!(result.is_err(), "expected error for incomplete JSON");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("EOF with invalid json") || err.contains("Parse error"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reader_invalid_json() {
+        // Completely invalid JSON
+        let reader = Cursor::new(b"this is not json\n".to_vec());
+        let mut stream = MessageReader::new(reader);
+
+        let result = stream.next().await.expect("expected a result");
+        assert!(result.is_err(), "expected error for invalid JSON");
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Parse error"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_reader_whitespace_only() {
+        let reader = Cursor::new(b"   \n  \t\n  ".to_vec());
+        let mut stream = MessageReader::new(reader);
+
+        // Whitespace-only input should yield None (EOF)
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reader_trailing_newline() {
+        let msg = json!({"type": "result", "status": "ok"});
+        let data = format!("{}\n\n", msg);
+
+        let reader = Cursor::new(data.into_bytes());
+        let mut stream = MessageReader::new(reader);
+
+        let val = stream.next().await.expect("expected value").expect("expected Ok");
+        assert_eq!(val["type"], "result");
+
+        // After the trailing newline, stream should end
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_with_capacity_small_buffer() {
+        let data = json!({"type": "test"}).to_string();
+        let reader = Cursor::new(data.into_bytes());
+        // Very small buffer -- data is small enough to fit
+        let mut stream = MessageReader::with_capacity(reader, 16);
+
+        let val = stream.next().await.expect("expected msg").expect("parse ok");
+        assert_eq!(val["type"], "test");
+    }
+
+    #[tokio::test]
+    async fn test_buffer_overflow_protection() {
+        // Create data larger than the tiny buffer
+        let large_data = "x".repeat(256);
+        let reader = Cursor::new(large_data.into_bytes());
+        let mut stream = MessageReader::with_capacity(reader, 128);
+
+        let result = stream.next().await;
+        assert!(result.is_some());
+        let item = result.expect("expected Some");
+        assert!(item.is_err(), "buffer overflow should return error");
+        let err = item.unwrap_err().to_string();
+        assert!(err.contains("Buffer overflow"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_json_with_embedded_newlines_in_string() {
+        // JSON string values with escaped \n should parse correctly
+        let data = r#"{"type":"message","content":"Line 1\nLine 2"}"#;
+        let reader = Cursor::new(data.as_bytes());
+        let mut stream = MessageReader::new(reader);
+
+        let val = stream.next().await.expect("expected msg").expect("parse ok");
+        assert_eq!(val["type"], "message");
+        assert_eq!(val["content"], "Line 1\nLine 2");
+    }
+
+    #[tokio::test]
+    async fn test_multiple_objects_no_newline() {
+        // Multiple JSON objects concatenated without newline separators
+        let msg1 = json!({"id": 1});
+        let msg2 = json!({"id": 2});
+        let data = format!("{}{}", msg1, msg2);
+
+        let reader = Cursor::new(data.into_bytes());
+        let mut stream = MessageReader::new(reader);
+
+        let v1 = stream.next().await.expect("expected first").expect("parse ok");
+        assert_eq!(v1["id"], 1);
+
+        let v2 = stream.next().await.expect("expected second").expect("parse ok");
+        assert_eq!(v2["id"], 2);
+
+        assert!(stream.next().await.is_none());
+    }
+}
