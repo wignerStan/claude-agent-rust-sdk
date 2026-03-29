@@ -1006,8 +1006,7 @@ mod tests {
     fn test_build_command_with_sandbox_settings() {
         use claude_agent_types::config::SandboxSettings;
         let mut options = make_options();
-        let mut sandbox = SandboxSettings::default();
-        sandbox.enabled = true;
+        let sandbox = SandboxSettings { enabled: true, ..Default::default() };
         options.sandbox = Some(sandbox);
 
         let transport = SubprocessTransport::new(Some("test".to_string()), options);
@@ -1209,5 +1208,192 @@ mod tests {
         let after_effort = &cmd_str[idx_effort..];
         // Should contain "low" soon after --effort, not "max"
         assert!(after_effort.contains("low"));
+    }
+
+    // --- find_cli error paths ---
+
+    #[test]
+    fn test_find_cli_nonexistent_path() {
+        let options = ClaudeAgentOptions {
+            cli_path: Some(PathBuf::from("/nonexistent/path/to/claude")),
+            ..Default::default()
+        };
+        let transport = SubprocessTransport::new(None, options);
+        let result = transport.find_cli();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("does not exist"), "unexpected error message: {err}");
+    }
+
+    #[test]
+    fn test_find_cli_non_executable_file() {
+        // Create a temp file that is NOT executable
+        let tmp = tempfile::NamedTempFile::new().expect("failed to create temp file");
+        let path = tmp.path().to_path_buf();
+
+        let options = ClaudeAgentOptions { cli_path: Some(path.clone()), ..Default::default() };
+        let transport = SubprocessTransport::new(None, options);
+
+        #[cfg(unix)]
+        {
+            // On Unix, a non-executable file should be rejected
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
+                .expect("set_permissions failed");
+            let result = transport.find_cli();
+            assert!(result.is_err(), "expected error for non-executable file");
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("not executable"), "unexpected error: {err}");
+        }
+        #[cfg(not(unix))]
+        {
+            // On non-Unix, any file is considered executable
+            let result = transport.find_cli();
+            assert!(result.is_ok(), "expected ok for non-Unix: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_find_cli_directory_path() {
+        // Create a temp directory and use it as the cli_path
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let path = tmp.path().to_path_buf();
+
+        let options = ClaudeAgentOptions { cli_path: Some(path), ..Default::default() };
+        let transport = SubprocessTransport::new(None, options);
+        let result = transport.find_cli();
+        assert!(result.is_err(), "expected error for directory path");
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("not a file"), "unexpected error: {err}");
+    }
+
+    // --- build_command edge cases ---
+
+    #[test]
+    fn test_build_command_with_cwd() {
+        let mut options = make_options();
+        options.cwd = Some(PathBuf::from("/custom/working/dir"));
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("/custom/working/dir"));
+    }
+
+    #[test]
+    fn test_build_command_with_env_vars() {
+        let mut options = make_options();
+        let mut env = HashMap::new();
+        env.insert("MY_VAR".to_string(), "my_value".to_string());
+        env.insert("ANOTHER".to_string(), "value2".to_string());
+        options.env = env;
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("MY_VAR"), "Expected MY_VAR in: {cmd_str}");
+        assert!(cmd_str.contains("ANOTHER"), "Expected ANOTHER in: {cmd_str}");
+    }
+
+    #[test]
+    fn test_build_command_with_empty_tools_list() {
+        let mut options = make_options();
+        options.tools = Some(ToolsConfig::List(vec![]));
+
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        // Empty tools list should NOT add --tools arg
+        assert!(!cmd_str.contains("--tools"), "Should not have --tools for empty list");
+    }
+
+    #[test]
+    fn test_build_command_no_prompt() {
+        let options = make_options();
+
+        let transport = SubprocessTransport::new(None, options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        // The prompt "test" should not appear since we passed None
+        // Just verify basic args are present
+        assert!(cmd_str.contains("--output-format"));
+        assert!(cmd_str.contains("stream-json"));
+    }
+
+    #[test]
+    fn test_build_command_with_prompt() {
+        let options = make_options();
+
+        let transport = SubprocessTransport::new(Some("hello world".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("hello world"), "Expected prompt in: {cmd_str}");
+    }
+
+    #[test]
+    fn test_build_command_sdk_entrypoint_env() {
+        let options = make_options();
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(
+            cmd_str.contains("CLAUDE_CODE_ENTRYPOINT"),
+            "Expected SDK entrypoint env var in: {cmd_str}"
+        );
+    }
+
+    #[test]
+    fn test_build_command_with_verbose_flag() {
+        let options = make_options();
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--verbose"), "Expected --verbose flag in: {cmd_str}");
+    }
+
+    #[test]
+    fn test_build_command_with_input_format() {
+        let options = make_options();
+        let transport = SubprocessTransport::new(Some("test".to_string()), options);
+        let cmd = transport.build_command().expect("Failed to build command");
+        let cmd_str = format!("{:?}", cmd);
+
+        assert!(cmd_str.contains("--input-format"), "Expected --input-format in: {cmd_str}");
+        assert!(cmd_str.contains("stream-json"), "Expected stream-json in: {cmd_str}");
+    }
+
+    // --- SubprocessTransport initial state ---
+
+    #[test]
+    fn test_new_transport_initial_state() {
+        let options = ClaudeAgentOptions::default();
+        let transport = SubprocessTransport::new(Some("Hello".to_string()), options);
+
+        // Verify initial state: not connected
+        assert!(transport.process.is_none(), "process should be None");
+        assert!(transport.stdin.is_none(), "stdin should be None");
+        assert!(transport.inbox.is_none(), "inbox should be None");
+        assert!(transport.reader_abort_handle.is_none(), "abort handle should be None");
+    }
+
+    #[test]
+    fn test_new_transport_with_none_prompt() {
+        let options = ClaudeAgentOptions::default();
+        let transport = SubprocessTransport::new(None, options);
+        assert!(transport.prompt.is_none());
+    }
+
+    #[test]
+    fn test_new_transport_with_some_prompt() {
+        let options = ClaudeAgentOptions::default();
+        let transport = SubprocessTransport::new(Some("Hello".to_string()), options);
+        assert_eq!(transport.prompt.as_deref(), Some("Hello"));
     }
 }

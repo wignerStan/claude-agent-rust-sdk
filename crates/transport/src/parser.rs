@@ -49,4 +49,58 @@ mod tests {
         assert!(is_result_message(&result_msg));
         assert!(!is_result_message(&other_msg));
     }
+
+    #[test]
+    fn test_parse_line_whitespace_only() {
+        let result = parse_line("   \t  ");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Empty line"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_parse_line_invalid_json() {
+        let result = parse_line("not json at all");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("JSON parse error"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_parse_line_with_leading_trailing_whitespace() {
+        let json = r#"  {"type": "user"}  "#;
+        let result = parse_line(json);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()["type"], "user");
+    }
+
+    #[test]
+    fn test_is_result_message_no_type_field() {
+        let msg: Value = serde_json::json!({"content": "hello"});
+        assert!(!is_result_message(&msg));
+    }
+
+    #[test]
+    fn test_is_result_message_non_string_type() {
+        let msg: Value = serde_json::json!({"type": 42});
+        assert!(!is_result_message(&msg));
+    }
+
+    #[test]
+    fn test_get_message_type() {
+        let msg: Value = serde_json::json!({"type": "assistant", "content": "hi"});
+        assert_eq!(get_message_type(&msg), Some("assistant"));
+    }
+
+    #[test]
+    fn test_get_message_type_no_type_field() {
+        let msg: Value = serde_json::json!({"content": "hi"});
+        assert!(get_message_type(&msg).is_none());
+    }
+
+    #[test]
+    fn test_get_message_type_non_string_type() {
+        let msg: Value = serde_json::json!({"type": 123});
+        assert!(get_message_type(&msg).is_none());
+    }
 }
