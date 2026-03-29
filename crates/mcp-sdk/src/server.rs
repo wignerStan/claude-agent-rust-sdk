@@ -832,4 +832,220 @@ mod tests {
         assert_eq!(names, vec!["tool_one", "tool_three", "tool_two"]);
         assert_eq!(server.tool_names().len(), 3);
     }
+
+    // --- Edge case tests ---
+
+    #[test]
+    fn test_config_clone_and_debug() {
+        let server = SdkMcpServer::new("test", "1.0.0");
+        let config = McpSdkServerConfig::new(&server);
+
+        // Clone
+        let cloned = config.clone();
+        assert_eq!(cloned.server_name, config.server_name);
+        assert_eq!(cloned.server_version, config.server_version);
+        assert_eq!(cloned.transport, config.transport);
+
+        // Debug
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("sdk"));
+        assert!(debug_str.contains("test"));
+    }
+
+    #[test]
+    fn test_new_server_with_empty_strings() {
+        let server = SdkMcpServer::new("", "");
+        assert_eq!(server.tool_names().len(), 0);
+
+        // Initialize should still work with empty name/version
+        let config = McpSdkServerConfig::new(&server);
+        assert_eq!(config.server_name, "");
+        assert_eq!(config.server_version, "");
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_null_arguments() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({ "type": "object" });
+        server.add_tool(ToolDefinition::new("echo", "Echo", schema, EchoHandler));
+
+        // arguments is explicitly null
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "echo",
+                "arguments": null
+            }
+        });
+
+        let response = server.handle_request(request).await.unwrap();
+        // null arguments should be treated as missing, defaulting to empty object
+        assert_eq!(response["result"]["content"][0]["text"], "");
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_string_name_field() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({ "type": "object" });
+        server.add_tool(ToolDefinition::new("echo", "Echo", schema, EchoHandler));
+
+        // name is an integer, not a string
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": 42,
+                "arguments": {}
+            }
+        });
+
+        let result = server.handle_request(request).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Missing tool name"));
+    }
+
+    #[tokio::test]
+    async fn test_jsonrpc_error_with_none_id() {
+        let err = jsonrpc_error(&None, -32600, "Invalid Request");
+        assert_eq!(err["jsonrpc"], "2.0");
+        assert_eq!(err["id"], Value::Null);
+        assert_eq!(err["error"]["code"], -32600);
+        assert_eq!(err["error"]["message"], "Invalid Request");
+    }
+
+    #[tokio::test]
+    async fn test_multiple_calls_to_same_tool() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": { "message": { "type": "string" } }
+        });
+        server.add_tool(ToolDefinition::new("echo", "Echo", schema, EchoHandler));
+
+        for i in 0..5 {
+            let request = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": i,
+                "method": "tools/call",
+                "params": {
+                    "name": "echo",
+                    "arguments": { "message": format!("call-{i}") }
+                }
+            });
+            let response = server.handle_request(request).await.unwrap();
+            assert_eq!(response["result"]["content"][0]["text"], format!("call-{i}"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_handle_requests() {
+        use std::sync::Arc;
+        use tokio::task::JoinSet;
+
+        struct SlowHandler;
+        impl ToolHandler for SlowHandler {
+            fn call(
+                &self,
+                _input: Value,
+            ) -> Pin<Box<dyn Future<Output = Result<Value, McpSdkError>> + Send + '_>> {
+                Box::pin(async {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": "slow result" }]
+                    }))
+                })
+            }
+        }
+
+        let server = Arc::new({
+            let mut s = SdkMcpServer::new("test", "1.0.0");
+            s.add_tool(ToolDefinition::new(
+                "slow",
+                "Slow tool",
+                serde_json::json!({ "type": "object" }),
+                SlowHandler,
+            ));
+            s
+        });
+
+        let mut tasks = JoinSet::new();
+        for i in 0..10 {
+            let srv = server.clone();
+            tasks.spawn(async move {
+                let request = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": i,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "slow",
+                        "arguments": {}
+                    }
+                });
+                srv.handle_request(request).await.unwrap()
+            });
+        }
+
+        let mut count = 0;
+        while let Some(result) = tasks.join_next().await {
+            let response = result.unwrap();
+            assert_eq!(response["result"]["content"][0]["text"], "slow result");
+            count += 1;
+        }
+        assert_eq!(count, 10);
+    }
+
+    #[tokio::test]
+    async fn test_handle_request_empty_object() {
+        let server = SdkMcpServer::new("test", "1.0.0");
+        let request = serde_json::json!({});
+
+        let response = server.handle_request(request).await.unwrap();
+        assert_eq!(response["error"]["code"], -32601);
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_with_array_arguments() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({ "type": "object" });
+        server.add_tool(ToolDefinition::new("echo", "Echo", schema, EchoHandler));
+
+        // arguments is an array instead of an object
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "echo",
+                "arguments": [1, 2, 3]
+            }
+        });
+
+        let response = server.handle_request(request).await.unwrap();
+        // Should work — handler receives the array as input, finds no "message" field
+        assert_eq!(response["result"]["content"][0]["text"], "");
+    }
+
+    #[tokio::test]
+    async fn test_tools_call_with_nonexistent_id() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({ "type": "object" });
+        server.add_tool(ToolDefinition::new("echo", "Echo", schema, EchoHandler));
+
+        // id is missing from request
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "echo",
+                "arguments": { "message": "no-id" }
+            }
+        });
+
+        let response = server.handle_request(request).await.unwrap();
+        assert_eq!(response["id"], Value::Null);
+        assert_eq!(response["result"]["content"][0]["text"], "no-id");
+    }
 }
