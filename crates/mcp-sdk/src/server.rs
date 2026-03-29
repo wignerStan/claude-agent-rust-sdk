@@ -741,4 +741,95 @@ mod tests {
         let server = SdkMcpServer::new("test", "1.0.0");
         assert!(server.get_tool("nonexistent").is_none());
     }
+
+    #[tokio::test]
+    async fn test_handle_request_no_method_field() {
+        let server = SdkMcpServer::new("test", "1.0.0");
+        let request = serde_json::json!({ "id": 1 });
+
+        let response = server.handle_request(request).await.unwrap();
+        assert_eq!(response["error"]["code"], -32601);
+        assert!(response["error"]["message"].as_str().unwrap().contains("Method not found"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_request_null_method() {
+        let server = SdkMcpServer::new("test", "1.0.0");
+        let request = serde_json::json!({ "method": null, "id": 1 });
+
+        let response = server.handle_request(request).await.unwrap();
+        assert_eq!(response["error"]["code"], -32601);
+        assert!(response["error"]["message"].as_str().unwrap().contains("Method not found"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_tools_call_with_complex_arguments() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({ "type": "object" });
+
+        struct ReflectHandler;
+        impl ToolHandler for ReflectHandler {
+            fn call(
+                &self,
+                input: Value,
+            ) -> Pin<Box<dyn Future<Output = Result<Value, McpSdkError>> + Send + '_>> {
+                Box::pin(async move {
+                    // Return the entire input as the response
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": serde_json::to_string(&input).unwrap() }]
+                    }))
+                })
+            }
+        }
+
+        server.add_tool(ToolDefinition::new("reflect", "Reflects input", schema, ReflectHandler));
+
+        let complex_args = serde_json::json!({
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "items": [1, 2, 3],
+                        "nested": true,
+                        "label": "deep"
+                    }
+                }
+            },
+            "flags": ["a", "b"],
+            "count": 42
+        });
+
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "reflect",
+                "arguments": complex_args
+            }
+        });
+
+        let response = server.handle_request(request).await.unwrap();
+        let text = response["result"]["content"][0]["text"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed["level1"]["level2"]["level3"]["label"], "deep");
+        assert_eq!(parsed["level1"]["level2"]["level3"]["items"][2], 3);
+        assert_eq!(parsed["flags"][1], "b");
+        assert_eq!(parsed["count"], 42);
+    }
+
+    #[test]
+    fn test_tool_builder_chain_three() {
+        let mut server = SdkMcpServer::new("test", "1.0.0");
+        let schema = serde_json::json!({ "type": "object" });
+
+        server
+            .tool("tool_one", "First", schema.clone(), EchoHandler)
+            .tool("tool_two", "Second", schema.clone(), EchoHandler)
+            .tool("tool_three", "Third", schema, EchoHandler);
+
+        let mut names: Vec<&str> = server.tool_names();
+        names.sort();
+        assert_eq!(names, vec!["tool_one", "tool_three", "tool_two"]);
+        assert_eq!(server.tool_names().len(), 3);
+    }
 }

@@ -214,4 +214,48 @@ mod tests {
         let text = result["content"][0]["text"].as_str().unwrap();
         assert_eq!(text, "hello world");
     }
+
+    #[tokio::test]
+    async fn test_tool_handler_error_propagation() {
+        struct FailHandler;
+        impl ToolHandler for FailHandler {
+            fn call(
+                &self,
+                _input: Value,
+            ) -> Pin<Box<dyn Future<Output = Result<Value, McpSdkError>> + Send + '_>> {
+                Box::pin(async { Err(McpSdkError::HandlerError("deliberate failure".to_string())) })
+            }
+        }
+
+        let def = ToolDefinition::new(
+            "fail_tool",
+            "Always fails",
+            serde_json::json!({ "type": "object" }),
+            FailHandler,
+        );
+
+        let result = def.handler.call(serde_json::json!({})).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.to_string(), "handler error: deliberate failure");
+    }
+
+    #[test]
+    fn test_tool_definition_input_schema() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string", "description": "User name" },
+                "age": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["name"]
+        });
+
+        let def = ToolDefinition::new("profile", "User profile", schema.clone(), AddHandler);
+
+        assert_eq!(def.input_schema, schema);
+        assert_eq!(def.input_schema["type"], "object");
+        assert_eq!(def.input_schema["required"][0], "name");
+        assert_eq!(def.input_schema["properties"]["age"]["minimum"], 0);
+    }
 }
