@@ -56,3 +56,37 @@ pub async fn query(
     let messages: Vec<_> = futures::StreamExt::collect::<Vec<_>>(stream).await;
     Ok(Box::pin(futures::stream::iter(messages)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The `query()` function spawns a real subprocess (claude CLI).
+    // These tests are ignored because they require an interactive CLI session
+    // and hang in CI/automated environments.
+
+    #[tokio::test]
+    #[ignore]
+    async fn query_fails_without_valid_transport() {
+        let result = query("test prompt", None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn query_with_options_fails_without_valid_transport() {
+        let opts = ClaudeAgentOptions::default();
+        let result = query("test prompt", Some(opts)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn query_error_message_is_descriptive() {
+        let result = query("hello", None).await;
+        match result {
+            Err(e) => assert!(!e.to_string().is_empty(), "Error message should not be empty"),
+            Ok(_) => panic!("Expected query to fail without valid transport"),
+        }
+    }
+}
