@@ -4,6 +4,7 @@ members = [
     "crates/types",
     "crates/transport",
     "crates/mcp",
+    "crates/mcp-sdk",
     "crates/core",
     "crates/api",
 ]
