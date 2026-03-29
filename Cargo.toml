@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.dependencies]
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
@@ -19,15 +19,15 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 async-trait = "0.1"
 async-stream = "0.3"
 futures = "0.3"
-uuid = { version = "1.6", features = ["v4", "serde"] }
+uuid = { version = "1.22", features = ["v4", "serde"] }
 which = "8.0"
-rmcp = { version = "0.14.0", features = ["server", "client"] }
+rmcp = { version = "1.2.0", features = ["server", "client"] }
 schemars = "1.2"
 tokio-util = "0.7"
 tokio-stream = "0.1"
 secrecy = { version = "0.10", features = ["serde"] }
 subtle = "2.5"
-proptest = "1.4"
+proptest = "1.10"
 governor = "0.10"
 criterion = "0.8"
 reqwest = { version = "0.13", features = ["json"] }

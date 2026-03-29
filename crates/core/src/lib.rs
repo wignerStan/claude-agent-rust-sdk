@@ -6,6 +6,7 @@ pub mod hooks;
 pub mod permissions;
 pub mod session;
 pub mod streaming;
+pub mod types;
 
 pub use agent::ClaudeAgent;
 pub use claude_agent_types::ClaudeAgentOptions;
@@ -14,3 +15,7 @@ pub use hooks::{HookCallback, HookContext, HookInput, HookOutput, HookRegistry};
 pub use permissions::{PermissionCallback, PermissionHandler};
 pub use session::{Session, SessionManager};
 pub use streaming::{message_channel, MessageReceiver, MessageSender};
+pub use types::{
+    ContextUsageCategory, ContextUsageResponse, McpConnectionStatus, McpServerStatus,
+    McpStatusResponse, McpToolInfo, ServerInfo,
+};

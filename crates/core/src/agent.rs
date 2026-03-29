@@ -67,6 +67,7 @@ use crate::control::{ControlProtocol, ControlResponse};
 use crate::hooks::HookRegistry;
 use crate::permissions::PermissionHandler;
 use crate::session::{Session, SessionManager};
+use crate::types::{ContextUsageResponse, McpStatusResponse, ServerInfo};
 
 /// The core Claude Agent.
 ///
@@ -237,16 +238,27 @@ impl ClaudeAgent {
                 tokio::select! {
                     // Handle outgoing control requests
                     Some(req) = control_guard.recv() => {
+                         use crate::control::ControlRequestType;
+
+                         let request_payload = match req.request {
+                             ControlRequestType::Interrupt => serde_json::json!({"subtype": "interrupt"}),
+                             ControlRequestType::SetPermissionMode { mode } => serde_json::json!({"subtype": "set_permission_mode", "mode": mode}),
+                             ControlRequestType::SetModel { model } => serde_json::json!({"subtype": "set_model", "model": model}),
+                             ControlRequestType::RewindFiles { user_message_id } => serde_json::json!({"subtype": "rewind_files", "user_message_id": user_message_id}),
+                             ControlRequestType::StopTask { task_id } => serde_json::json!({"subtype": "stop_task", "task_id": task_id}),
+                             ControlRequestType::McpStatus => serde_json::json!({"subtype": "mcp_status"}),
+                             ControlRequestType::McpReconnect { server_name } => serde_json::json!({"subtype": "mcp_reconnect", "serverName": server_name}),
+                             ControlRequestType::McpToggle { server_name, enabled } => serde_json::json!({"subtype": "mcp_toggle", "serverName": server_name, "enabled": enabled}),
+                             ControlRequestType::GetContextUsage => serde_json::json!({"subtype": "get_context_usage"}),
+                             ControlRequestType::Initialize { .. }
+                             | ControlRequestType::McpMessage { .. }
+                             | ControlRequestType::HookCallback { .. } => serde_json::Value::Null,
+                         };
+
                          let req_json = serde_json::json!({
                              "type": "control_request",
                              "request_id": req.request_id,
-                             "request": match req.request {
-                                 crate::control::ControlRequestType::Interrupt => serde_json::json!({"subtype": "interrupt"}),
-                                 crate::control::ControlRequestType::SetPermissionMode { mode } => serde_json::json!({"subtype": "set_permission_mode", "mode": mode}),
-                                 crate::control::ControlRequestType::SetModel { model } => serde_json::json!({"subtype": "set_model", "model": model}),
-                                 crate::control::ControlRequestType::RewindFiles { user_message_id } => serde_json::json!({"subtype": "rewind_files", "user_message_id": user_message_id}),
-                                 _ => serde_json::Value::Null
-                             }
+                             "request": request_payload
                          });
 
                          let req_str = serde_json::to_string(&req_json).unwrap_or_default();
@@ -286,7 +298,9 @@ impl ClaudeAgent {
                                                   serde_json::json!({"error": "Invalid mcp_message payload"})
                                               }
                                           },
-                                          "initialize" | "set_permission_mode" | "set_model" | "rewind_files" => {
+                                          "initialize" | "set_permission_mode" | "set_model"
+                                          | "rewind_files" | "stop_task" | "mcp_reconnect"
+                                          | "mcp_toggle" | "mcp_status" | "get_context_usage" => {
                                                serde_json::json!({"status": "not_implemented"})
                                           }
                                           _ => {
@@ -413,12 +427,6 @@ impl ClaudeAgent {
         Ok(Box::pin(stream))
     }
 
-    /// Get information about the connected server.
-    pub async fn get_server_info(&self) -> Option<serde_json::Value> {
-        let guard = self.initialization_data.lock().await;
-        guard.clone()
-    }
-
     /// Send interrupt signal.
     pub async fn interrupt(&self) -> Result<ControlResponse, ClaudeAgentError> {
         let protocol = self.control_protocol.as_ref().ok_or_else(|| {
@@ -458,6 +466,158 @@ impl ClaudeAgent {
             ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
         })?;
         protocol.rewind_files(user_message_id).await
+    }
+
+    /// Stop a running background task.
+    ///
+    /// After this resolves, a `task_notification` system message with
+    /// status `'stopped'` will be emitted by the CLI in the message stream.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` - The task ID from `task_notification` events.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the control protocol is not initialized or
+    /// the request fails.
+    pub async fn stop_task(&self, task_id: &str) -> Result<ControlResponse, ClaudeAgentError> {
+        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
+        })?;
+        protocol.stop_task(task_id).await
+    }
+
+    /// Get current MCP server connection status.
+    ///
+    /// Queries the Claude Code CLI for the live connection status of all
+    /// configured MCP servers. Returns a structured response with server
+    /// names, statuses, and optional error messages.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the control protocol is not initialized,
+    /// the request fails, or the response cannot be parsed.
+    pub async fn get_mcp_status(&self) -> Result<McpStatusResponse, ClaudeAgentError> {
+        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
+        })?;
+
+        let response = protocol.get_mcp_status().await?;
+
+        if !response.success {
+            let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
+            return Err(ClaudeAgentError::ControlProtocol(format!(
+                "Failed to get MCP status: {}",
+                error_msg
+            )));
+        }
+
+        let response_data = response.response.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("MCP status response missing data".to_string())
+        })?;
+
+        serde_json::from_value(response_data.clone()).map_err(|e| {
+            ClaudeAgentError::ControlProtocol(format!("Failed to parse MCP status: {}", e))
+        })
+    }
+
+    /// Reconnect a disconnected or failed MCP server.
+    ///
+    /// Use this to retry connecting to an MCP server that failed to connect
+    /// or was disconnected.
+    ///
+    /// # Arguments
+    ///
+    /// * `server_name` - The name of the MCP server to reconnect.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the control protocol is not initialized or
+    /// the reconnection fails.
+    pub async fn reconnect_mcp_server(
+        &self,
+        server_name: &str,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
+        })?;
+        protocol.reconnect_mcp_server(server_name).await
+    }
+
+    /// Enable or disable an MCP server.
+    ///
+    /// Disabling a server disconnects it and removes its tools from the
+    /// available tool set. Enabling a server reconnects it and makes its
+    /// tools available again.
+    ///
+    /// # Arguments
+    ///
+    /// * `server_name` - The name of the MCP server to toggle.
+    /// * `enabled` - `true` to enable, `false` to disable.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the control protocol is not initialized or
+    /// the toggle operation fails.
+    pub async fn toggle_mcp_server(
+        &self,
+        server_name: &str,
+        enabled: bool,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
+        })?;
+        protocol.toggle_mcp_server(server_name, enabled).await
+    }
+
+    /// Get a breakdown of current context window usage by category.
+    ///
+    /// Returns the same data shown by the `/context` command in the CLI,
+    /// including token counts per category, total usage, and detailed
+    /// breakdowns of MCP tools, memory files, and agents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the control protocol is not initialized,
+    /// the request fails, or the response cannot be parsed.
+    pub async fn get_context_usage(&self) -> Result<ContextUsageResponse, ClaudeAgentError> {
+        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
+        })?;
+
+        let response = protocol.get_context_usage().await?;
+
+        if !response.success {
+            let error_msg = response.error.unwrap_or_else(|| "Unknown error".to_string());
+            return Err(ClaudeAgentError::ControlProtocol(format!(
+                "Failed to get context usage: {}",
+                error_msg
+            )));
+        }
+
+        let response_data = response.response.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Context usage response missing data".to_string())
+        })?;
+
+        serde_json::from_value(response_data.clone()).map_err(|e| {
+            ClaudeAgentError::ControlProtocol(format!("Failed to parse context usage: {}", e))
+        })
+    }
+
+    /// Get server initialization information.
+    ///
+    /// Returns initialization information from the Claude Code server
+    /// including available commands, output styles, and server capabilities.
+    /// Returns `None` if the agent has not connected or the server
+    /// has not sent initialization data.
+    ///
+    /// Note: Unlike the Python SDK's `get_server_info()` which returns
+    /// the raw `dict`, this returns a `ServerInfo` wrapper that provides
+    /// typed accessor methods.
+    pub async fn get_server_info(&self) -> Option<ServerInfo> {
+        let guard = self.initialization_data.lock().await;
+        guard.as_ref().map(|data| ServerInfo::new(data.clone()))
     }
 
     /// Disconnect from Claude Code CLI.
@@ -504,5 +664,113 @@ impl ClaudeAgent {
     /// Get a mutable reference to the MCP manager.
     pub fn mcp_manager_mut(&mut self) -> &mut McpServerManager {
         &mut self.mcp_manager
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_agent() -> ClaudeAgent {
+        ClaudeAgent::new(ClaudeAgentOptions::default())
+    }
+
+    /// Helper: create an agent whose control channel has a reader that drops immediately,
+    /// causing send_request to fail with a "Failed to send request" error.
+    fn create_test_agent_with_dropped_receiver() -> ClaudeAgent {
+        let mut agent = ClaudeAgent::new(ClaudeAgentOptions::default());
+        // Drop the receiver by replacing the control protocol with one whose rx is dropped
+        let (protocol, _rx) = ControlProtocol::new();
+        // Dropping _rx closes the channel so sends will fail immediately
+        drop(_rx);
+        agent.control_protocol = Some(Arc::new(protocol));
+        agent
+    }
+
+    #[tokio::test]
+    async fn stop_task_returns_error_when_channel_closed() {
+        let agent = create_test_agent_with_dropped_receiver();
+        let result = agent.stop_task("task-abc").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Failed to send request"));
+    }
+
+    #[tokio::test]
+    async fn get_mcp_status_returns_error_when_channel_closed() {
+        let agent = create_test_agent_with_dropped_receiver();
+        let result = agent.get_mcp_status().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn reconnect_mcp_server_returns_error_when_channel_closed() {
+        let agent = create_test_agent_with_dropped_receiver();
+        let result = agent.reconnect_mcp_server("my-server").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn toggle_mcp_server_returns_error_when_channel_closed() {
+        let agent = create_test_agent_with_dropped_receiver();
+        let result = agent.toggle_mcp_server("my-server", false).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_context_usage_returns_error_when_channel_closed() {
+        let agent = create_test_agent_with_dropped_receiver();
+        let result = agent.get_context_usage().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_server_info_returns_none_before_connect() {
+        let agent = create_test_agent();
+        let result = agent.get_server_info().await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_server_info_returns_data_after_initialization() {
+        let agent = create_test_agent();
+
+        // Simulate initialization data being set (normally happens in connect())
+        let init_data = serde_json::json!({
+            "output_style": "verbose",
+            "commands": ["/help", "/context", "/compact"]
+        });
+        {
+            let mut guard = agent.initialization_data.lock().await;
+            *guard = Some(init_data);
+        }
+
+        let info = agent.get_server_info().await;
+        assert!(info.is_some());
+        let server_info = info.unwrap();
+        assert_eq!(server_info.output_style(), Some("verbose"));
+        let commands = server_info.commands().unwrap();
+        assert_eq!(commands, vec!["/help", "/context", "/compact"]);
+    }
+
+    #[tokio::test]
+    async fn get_server_info_handles_arbitrary_data() {
+        let agent = create_test_agent();
+
+        let init_data = serde_json::json!({"version": "1.2.3", "features": 42});
+        {
+            let mut guard = agent.initialization_data.lock().await;
+            *guard = Some(init_data);
+        }
+
+        let info = agent.get_server_info().await.unwrap();
+        assert_eq!(info.get("version").and_then(|v| v.as_str()), Some("1.2.3"));
+        assert!(info.output_style().is_none());
+    }
+
+    #[tokio::test]
+    async fn agent_new_creates_with_control_protocol() {
+        let agent = create_test_agent();
+        assert!(agent.control_protocol.is_some());
     }
 }

@@ -26,6 +26,7 @@
 
 pub mod client;
 pub mod query;
+pub mod sessions;
 
 // Re-export public types
 pub use claude_agent_types as types;
@@ -34,3 +35,4 @@ pub use claude_agent_types::{ClaudeAgentError, ClaudeAgentOptions, Message};
 // Re-export public API
 pub use client::ClaudeAgentClient;
 pub use query::query;
+pub use sessions::{find_claude_cli, SessionInfo};

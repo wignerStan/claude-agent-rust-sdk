@@ -37,10 +37,22 @@ pub enum ControlRequestType {
     RewindFiles {
         user_message_id: String,
     },
+    StopTask {
+        task_id: String,
+    },
     McpMessage {
         server_name: String,
         message: serde_json::Value,
     },
+    McpStatus,
+    McpReconnect {
+        server_name: String,
+    },
+    McpToggle {
+        server_name: String,
+        enabled: bool,
+    },
+    GetContextUsage,
     HookCallback {
         callback_id: String,
         output: serde_json::Value,
@@ -134,10 +146,133 @@ impl ControlProtocol {
         })
         .await
     }
+
+    /// Send stop task request to stop a running background task.
+    pub async fn stop_task(&self, task_id: &str) -> Result<ControlResponse, ClaudeAgentError> {
+        self.send_request(ControlRequestType::StopTask { task_id: task_id.to_string() }).await
+    }
+
+    /// Request MCP server connection status.
+    pub async fn get_mcp_status(&self) -> Result<ControlResponse, ClaudeAgentError> {
+        self.send_request(ControlRequestType::McpStatus).await
+    }
+
+    /// Send reconnect request for a failed MCP server.
+    pub async fn reconnect_mcp_server(
+        &self,
+        server_name: &str,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        self.send_request(ControlRequestType::McpReconnect { server_name: server_name.to_string() })
+            .await
+    }
+
+    /// Send toggle request to enable or disable an MCP server.
+    pub async fn toggle_mcp_server(
+        &self,
+        server_name: &str,
+        enabled: bool,
+    ) -> Result<ControlResponse, ClaudeAgentError> {
+        self.send_request(ControlRequestType::McpToggle {
+            server_name: server_name.to_string(),
+            enabled,
+        })
+        .await
+    }
+
+    /// Request context window usage breakdown.
+    pub async fn get_context_usage(&self) -> Result<ControlResponse, ClaudeAgentError> {
+        self.send_request(ControlRequestType::GetContextUsage).await
+    }
 }
 
 impl Default for ControlProtocol {
     fn default() -> Self {
         Self::new().0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create a protocol, spawn a task that immediately responds with success.
+    async fn setup_responding_protocol() -> ControlProtocol {
+        let (protocol, mut rx) = ControlProtocol::new();
+        let protocol_clone = protocol.pending_requests.clone();
+
+        tokio::spawn(async move {
+            while let Some(req) = rx.recv().await {
+                let mut pending = protocol_clone.lock().await;
+                if let Some(tx) = pending.remove(&req.request_id) {
+                    let _ = tx.send(ControlResponse {
+                        request_id: req.request_id,
+                        success: true,
+                        response: Some(serde_json::json!({"status": "ok"})),
+                        error: None,
+                    });
+                }
+            }
+        });
+
+        protocol
+    }
+
+    #[tokio::test]
+    async fn stop_task_sends_correct_request_type() {
+        let protocol = setup_responding_protocol().await;
+        let result = protocol.stop_task("task-123").await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn get_mcp_status_sends_correct_request_type() {
+        let protocol = setup_responding_protocol().await;
+        let result = protocol.get_mcp_status().await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn reconnect_mcp_server_sends_correct_request_type() {
+        let protocol = setup_responding_protocol().await;
+        let result = protocol.reconnect_mcp_server("my-server").await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn toggle_mcp_server_sends_correct_request_type() {
+        let protocol = setup_responding_protocol().await;
+        let result = protocol.toggle_mcp_server("my-server", true).await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn get_context_usage_sends_correct_request_type() {
+        let protocol = setup_responding_protocol().await;
+        let result = protocol.get_context_usage().await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn control_request_type_variants_exhaustive() {
+        // Verify all variants construct without panic
+        let _ = ControlRequestType::Interrupt;
+        let _ = ControlRequestType::Initialize { hooks: None };
+        let _ = ControlRequestType::SetPermissionMode { mode: "default".into() };
+        let _ = ControlRequestType::SetModel { model: Some("claude-sonnet-4-5".into()) };
+        let _ = ControlRequestType::SetModel { model: None };
+        let _ = ControlRequestType::RewindFiles { user_message_id: "id-1".into() };
+        let _ = ControlRequestType::StopTask { task_id: "task-1".into() };
+        let _ = ControlRequestType::McpMessage {
+            server_name: "server".into(),
+            message: serde_json::json!({"method": "test"}),
+        };
+        let _ = ControlRequestType::McpStatus;
+        let _ = ControlRequestType::McpReconnect { server_name: "server".into() };
+        let _ = ControlRequestType::McpToggle { server_name: "server".into(), enabled: false };
+        let _ = ControlRequestType::GetContextUsage;
+        let _ = ControlRequestType::HookCallback {
+            callback_id: "cb-1".into(),
+            output: serde_json::json!({"result": "ok"}),
+        };
     }
 }
