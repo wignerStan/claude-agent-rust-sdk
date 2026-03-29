@@ -4,13 +4,20 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 // Hook types are handled via callbacks in Rust
 
+/// Permission mode controlling how Claude interacts with tools.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
+    /// Default permission mode with standard prompts.
     Default,
+    /// Automatically accept file edits.
     AcceptEdits,
+    /// Plan-only mode with no tool execution.
     Plan,
+    /// Bypass all permission checks.
     BypassPermissions,
+    /// Never ask for permission; auto-accept or auto-deny.
+    DontAsk,
 }
 
 impl std::fmt::Display for PermissionMode {
@@ -20,6 +27,7 @@ impl std::fmt::Display for PermissionMode {
             Self::AcceptEdits => write!(f, "acceptEdits"),
             Self::Plan => write!(f, "plan"),
             Self::BypassPermissions => write!(f, "bypassPermissions"),
+            Self::DontAsk => write!(f, "dontAsk"),
         }
     }
 }
@@ -46,6 +54,31 @@ impl std::fmt::Display for McpTransportType {
             Self::Http => write!(f, "http"),
             Self::Sse => write!(f, "sse"),
             Self::Auto => write!(f, "auto"),
+        }
+    }
+}
+
+/// Level of effort to use for Claude's responses.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum EffortLevel {
+    /// Minimal effort for simple tasks.
+    Low,
+    /// Standard effort for most tasks.
+    Medium,
+    /// Increased effort for complex tasks.
+    High,
+    /// Maximum effort for the most demanding tasks.
+    Max,
+}
+
+impl std::fmt::Display for EffortLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Low => write!(f, "low"),
+            Self::Medium => write!(f, "medium"),
+            Self::High => write!(f, "high"),
+            Self::Max => write!(f, "max"),
         }
     }
 }
@@ -102,14 +135,82 @@ pub enum ToolsPreset {
     },
 }
 
+/// Scope for memory storage across sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub enum MemoryScope {
+    /// Memory scoped to the user across all projects.
+    User,
+    /// Memory scoped to a specific project.
+    Project,
+    /// Memory scoped to the local session only.
+    Local,
+}
+
+impl std::fmt::Display for MemoryScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::User => write!(f, "user"),
+            Self::Project => write!(f, "project"),
+            Self::Local => write!(f, "local"),
+        }
+    }
+}
+
+/// Extended thinking configuration for Claude.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ThinkingConfig {
+    /// Maximum number of tokens to use for thinking.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Effort level for thinking.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<EffortLevel>,
+}
+
+/// Budget constraints for a task.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskBudget {
+    /// Maximum number of conversation turns.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    /// Maximum number of tokens to consume.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+}
+
+/// Definition of a custom agent with its capabilities and configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AgentDefinition {
+    /// Human-readable description of the agent.
     pub description: String,
+    /// System prompt for the agent.
     pub prompt: String,
+    /// Tools available to this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<String>>,
+    /// Model to use for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Tools explicitly disallowed for this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disallowed_tools: Option<Vec<String>>,
+    /// Skills available to this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<String>>,
+    /// Memory scope for this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryScope>,
+    /// MCP servers available to this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<Vec<serde_json::Value>>,
+    /// Initial prompt to send when starting this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_prompt: Option<String>,
+    /// Maximum number of turns for this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -174,6 +275,21 @@ pub struct ClaudeAgentOptions {
     pub output_format: Option<serde_json::Value>,
     #[serde(default)]
     pub enable_file_checkpointing: bool,
+    /// Effort level for Claude's responses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<EffortLevel>,
+    /// Extended thinking configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<ThinkingConfig>,
+    /// Budget constraints for the task.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_budget: Option<TaskBudget>,
+    /// Session identifier for tracking and resuming.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Whether to use strict MCP configuration (no defaults).
+    #[serde(default)]
+    pub strict_mcp_config: bool,
     // Note: can_use_tool and hooks are handled differently in Rust (callbacks)
 }
 
