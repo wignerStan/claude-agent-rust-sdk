@@ -55,7 +55,10 @@ pub fn find_claude_cli() -> Result<PathBuf, ClaudeAgentError> {
 /// By default, this is `~/.claude/sessions/`. The directory may not exist
 /// if no sessions have been recorded yet.
 fn sessions_base_dir() -> Result<PathBuf, ClaudeAgentError> {
-    let home = dirs::home_dir()
+    let home = std::env::var("HOME")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir)
         .ok_or_else(|| ClaudeAgentError::Config("Cannot determine home directory".into()))?;
     Ok(home.join(".claude").join("sessions"))
 }
@@ -394,6 +397,85 @@ mod tests {
         }
     }
 
+    // --- SessionInfo serde tests ---
+
+    #[test]
+    fn session_info_serialization_roundtrip() {
+        let info = SessionInfo {
+            id: "session-123".to_string(),
+            title: Some("My Session".to_string()),
+            tags: vec!["important".to_string(), "debug".to_string()],
+            created_at: Some("2025-01-01T00:00:00Z".to_string()),
+            updated_at: Some("2025-01-02T00:00:00Z".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: SessionInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, "session-123");
+        assert_eq!(parsed.title.as_deref(), Some("My Session"));
+        assert_eq!(parsed.tags, vec!["important", "debug"]);
+        assert_eq!(parsed.created_at.as_deref(), Some("2025-01-01T00:00:00Z"));
+        assert_eq!(parsed.updated_at.as_deref(), Some("2025-01-02T00:00:00Z"));
+    }
+
+    #[test]
+    fn session_info_deserialization_missing_optional_fields() {
+        let json = r#"{"id":"session-abc"}"#;
+        let info: SessionInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "session-abc");
+        assert!(info.title.is_none());
+        assert!(info.tags.is_empty());
+        assert!(info.created_at.is_none());
+        assert!(info.updated_at.is_none());
+    }
+
+    #[test]
+    fn session_info_deserialization_empty_tags_defaults() {
+        let json = r#"{"id":"s1","tags":[]}"#;
+        let info: SessionInfo = serde_json::from_str(json).unwrap();
+        assert!(info.tags.is_empty());
+    }
+
+    #[test]
+    fn session_info_debug_format() {
+        let info = SessionInfo {
+            id: "test".to_string(),
+            title: None,
+            tags: Vec::new(),
+            created_at: None,
+            updated_at: None,
+        };
+        let debug = format!("{:?}", info);
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn session_info_clone() {
+        let info = SessionInfo {
+            id: "orig".to_string(),
+            title: Some("Title".to_string()),
+            tags: vec!["a".to_string()],
+            created_at: Some("2025-01-01T00:00:00Z".to_string()),
+            updated_at: None,
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.id, info.id);
+        assert_eq!(cloned.title, info.title);
+        assert_eq!(cloned.tags, info.tags);
+    }
+
+    // --- sessions_base_dir tests ---
+
+    #[test]
+    fn sessions_base_dir_returns_result() {
+        let result = sessions_base_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains(".claude"));
+        assert!(path.to_string_lossy().contains("sessions"));
+    }
+
+    // --- list_sessions tests ---
+
     #[tokio::test]
     async fn list_sessions_returns_empty_when_no_dir() {
         // Verify that reading a non-existent directory errors gracefully.
@@ -404,6 +486,56 @@ mod tests {
         let result = tokio::fs::read_dir(&sessions_dir).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn list_sessions_discovers_jsonl_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj-hash");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        // Create some session files
+        tokio::fs::write(project_dir.join("session-1.jsonl"), "{}\n").await.unwrap();
+        tokio::fs::write(project_dir.join("session-2.jsonl"), "{}\n").await.unwrap();
+        // Create a non-JSONL file that should be ignored
+        tokio::fs::write(project_dir.join("notes.txt"), "ignored").await.unwrap();
+
+        // Override HOME so sessions_base_dir() points to our temp dir.
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let result = list_sessions().await;
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+
+        let sessions = result.unwrap();
+        assert_eq!(sessions.len(), 2);
+        let ids: Vec<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&"session-1"));
+        assert!(ids.contains(&"session-2"));
+    }
+
+    #[tokio::test]
+    async fn list_sessions_empty_directory() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sessions_dir = tmp.path().join(".claude").join("sessions");
+        tokio::fs::create_dir_all(&sessions_dir).await.unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let result = list_sessions().await;
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+
+        let sessions = result.unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    // --- Session CRUD tests with real temp dir ---
 
     #[tokio::test]
     async fn get_session_info_not_found() {
@@ -439,5 +571,195 @@ mod tests {
     async fn fork_session_not_found() {
         let result = fork_session("nonexistent-session-id").await;
         assert!(result.is_err());
+    }
+
+    // --- Session CRUD with temp dir (happy path) ---
+
+    #[tokio::test]
+    async fn session_crud_full_lifecycle() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj-hash");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let session_file = project_dir.join("test-session.jsonl");
+        tokio::fs::write(
+            &session_file,
+            r#"{"type":"user","message":{"role":"user","content":"hello"}}"#,
+        )
+        .await
+        .unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        // get_session_info should succeed
+        let info = get_session_info("test-session").await.unwrap();
+        assert_eq!(info.id, "test-session");
+        assert!(info.updated_at.is_some());
+
+        // get_session_messages should succeed
+        let messages = get_session_messages("test-session").await.unwrap();
+        assert_eq!(messages.len(), 1);
+
+        // rename_session should succeed
+        rename_session("test-session", "New Title").await.unwrap();
+        let title_file = project_dir.join("test-session.title");
+        let title_content = tokio::fs::read_to_string(&title_file).await.unwrap();
+        assert_eq!(title_content, "New Title");
+
+        // tag_session should succeed
+        tag_session("test-session", "important").await.unwrap();
+        let tags_file = project_dir.join("test-session.tags");
+        let tags_content = tokio::fs::read_to_string(&tags_file).await.unwrap();
+        assert!(tags_content.contains("important"));
+
+        // tag_session with duplicate should not add again
+        tag_session("test-session", "important").await.unwrap();
+        let tags_content2 = tokio::fs::read_to_string(&tags_file).await.unwrap();
+        assert_eq!(tags_content2.lines().filter(|l| *l == "important").count(), 1);
+
+        // tag_session with second tag
+        tag_session("test-session", "review").await.unwrap();
+        let tags_content3 = tokio::fs::read_to_string(&tags_file).await.unwrap();
+        assert!(tags_content3.contains("review"));
+
+        // fork_session should succeed
+        let new_id = fork_session("test-session").await.unwrap();
+        assert!(!new_id.is_empty());
+        let forked_file = project_dir.join(format!("{new_id}.jsonl"));
+        assert!(forked_file.exists());
+
+        // delete_session should succeed
+        delete_session("test-session").await.unwrap();
+        assert!(!session_file.exists());
+        // Title and tags files should also be cleaned up
+        assert!(!title_file.exists());
+        assert!(!tags_file.exists());
+
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_session_messages_parses_valid_jsonl() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let session_file = project_dir.join("msg-session.jsonl");
+        let content = r#"{"type":"user","message":{"role":"user","content":"hello"}}
+{"type":"assistant","message":{"role":"assistant","content":"world"}}
+"#;
+        tokio::fs::write(&session_file, content).await.unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let messages = get_session_messages("msg-session").await.unwrap();
+        assert_eq!(messages.len(), 2);
+
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_session_messages_skips_empty_lines() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let session_file = project_dir.join("empty-lines.jsonl");
+        let content =
+            "\n\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n\n";
+        tokio::fs::write(&session_file, content).await.unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let messages = get_session_messages("empty-lines").await.unwrap();
+        assert_eq!(messages.len(), 1);
+
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_session_messages_errors_on_invalid_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let session_file = project_dir.join("bad-json.jsonl");
+        tokio::fs::write(&session_file, "not valid json\n").await.unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        let result = get_session_messages("bad-json").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Failed to parse session line"));
+
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_session_removes_all_associated_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let session_id = "cleanup-test";
+        let session_file = project_dir.join(format!("{session_id}.jsonl"));
+        tokio::fs::write(&session_file, "{}").await.unwrap();
+        tokio::fs::write(project_dir.join(format!("{session_id}.title")), "Title").await.unwrap();
+        tokio::fs::write(project_dir.join(format!("{session_id}.tags")), "tag1\ntag2")
+            .await
+            .unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        delete_session(session_id).await.unwrap();
+
+        assert!(!session_file.exists());
+        assert!(!project_dir.join(format!("{session_id}.title")).exists());
+        assert!(!project_dir.join(format!("{session_id}.tags")).exists());
+
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_session_succeeds_when_no_sidecar_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let project_dir = tmp.path().join(".claude").join("sessions").join("proj");
+        tokio::fs::create_dir_all(&project_dir).await.unwrap();
+
+        let session_id = "no-sidecar";
+        let session_file = project_dir.join(format!("{session_id}.jsonl"));
+        tokio::fs::write(&session_file, "{}").await.unwrap();
+
+        let original_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", tmp.path());
+
+        delete_session(session_id).await.unwrap();
+        assert!(!session_file.exists());
+
+        match original_home {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
+        }
     }
 }
