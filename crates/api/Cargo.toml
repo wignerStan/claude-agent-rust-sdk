@@ -10,11 +10,16 @@ claude-agent-core = { path = "../core" }
 claude-agent-transport = { path = "../transport" }
 tokio.workspace = true
 futures.workspace = true
+serde_json = { workspace = true }
+serde = { workspace = true }
+which = { workspace = true }
+dirs = { workspace = true }
+uuid = { workspace = true }
+chrono = "0.4"
 
 [dev-dependencies]
-serde_json = { workspace = true }
 async-trait = { workspace = true }
 claude-agent-mcp = { path = "../mcp" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
-which.workspace = true
+tempfile = "3"
