@@ -232,89 +232,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
-name = "claude-agent-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "claude-agent-core",
- "claude-agent-mcp",
- "claude-agent-transport",
- "claude-agent-types",
- "dirs",
- "futures",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "which",
-]
-
-[[package]]
-name = "claude-agent-core"
+name = "claude-agent"
 version = "0.1.0"
 dependencies = [
  "async-stream",
  "async-trait",
- "claude-agent-mcp",
- "claude-agent-transport",
- "claude-agent-types",
- "futures",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "claude-agent-mcp"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "claude-agent-types",
+ "chrono",
  "criterion",
- "governor",
- "proptest",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "claude-agent-transport"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "claude-agent-types",
  "dirs",
  "futures",
+ "governor",
  "pin-project-lite",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "which",
-]
-
-[[package]]
-name = "claude-agent-types"
-version = "0.1.0"
-dependencies = [
  "proptest",
+ "rmcp",
  "schemars",
  "secrecy",
  "serde",
  "serde_json",
  "subtle",
+ "tempfile",
  "thiserror",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
+ "which",
 ]
 
 [[package]]

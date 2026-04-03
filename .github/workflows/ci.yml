@@ -46,10 +46,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test
 
   # Security audit (runs on main branch only)
   security:
@@ -107,7 +107,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.rust }}-build-
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test
 
   # Release build (runs on main branch only)
   build-release:
@@ -139,8 +139,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-release-build-
 
-      - name: Build workspace in release mode
-        run: cargo build --workspace --release
+      - name: Build release
+        run: cargo build --release
 
   # Build and deploy docs (runs on main branch only)
   docs:
@@ -162,7 +162,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build docs
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --no-deps
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
