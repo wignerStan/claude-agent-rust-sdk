@@ -168,6 +168,12 @@ fn agent_definition_full_serde_roundtrip() {
         prompt: "You are a test agent.".to_string(),
         tools: Some(vec!["Read".to_string(), "Write".to_string()]),
         model: Some("claude-sonnet-4-20250514".to_string()),
+        disallowed_tools: None,
+        skills: None,
+        memory: None,
+        mcp_servers: None,
+        initial_prompt: None,
+        max_turns: None,
     };
     let json = serde_json::to_string(&def).unwrap();
     let back: AgentDefinition = serde_json::from_str(&json).unwrap();
@@ -184,6 +190,12 @@ fn agent_definition_minimal_serde_roundtrip() {
         prompt: "Be minimal.".to_string(),
         tools: None,
         model: None,
+        disallowed_tools: None,
+        skills: None,
+        memory: None,
+        mcp_servers: None,
+        initial_prompt: None,
+        max_turns: None,
     };
     let json = serde_json::to_string(&def).unwrap();
     let back: AgentDefinition = serde_json::from_str(&json).unwrap();
@@ -242,6 +254,12 @@ fn claude_agent_options_full_serde_roundtrip() {
             prompt: "Review code.".to_string(),
             tools: Some(vec!["Read".to_string()]),
             model: None,
+            disallowed_tools: None,
+            skills: None,
+            memory: None,
+            mcp_servers: None,
+            initial_prompt: None,
+            max_turns: None,
         },
     );
 
@@ -284,6 +302,11 @@ fn claude_agent_options_full_serde_roundtrip() {
         max_thinking_tokens: Some(8000),
         output_format: Some(serde_json::json!({"type": "stream_json"})),
         enable_file_checkpointing: true,
+        effort: None,
+        thinking: None,
+        task_budget: None,
+        session_id: None,
+        strict_mcp_config: false,
     };
 
     let json = serde_json::to_string(&opts).unwrap();
