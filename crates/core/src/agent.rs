@@ -1,57 +1,21 @@
 //! Core agent implementation for Claude Agent SDK.
 //!
-//! This module provides the main `ClaudeAgent` struct that orchestrates
-//! communication with Claude Code CLI, manages sessions, handles tool calls,
-//! and integrates with MCP (Model Context Protocol) servers.
-//!
-//! # Architecture
-//!
-//! The agent is the primary entry point for interacting with Claude. It manages:
-//!
-//! - **Transport Layer**: Handles subprocess spawning and message streaming
-//! - **Session Management**: Tracks conversation state across multiple turns
-//! - **MCP Integration**: Manages Model Context Protocol servers for tool calls
-//! - **Control Protocol**: Bidirectional communication with Claude Code CLI
-//! - **Hook System**: Extensible callbacks for tool execution and other events
-//! - **Permission System**: Handles user approvals for file operations
-//!
-//! # Lifecycle
-//!
-//! 1. **Initialization**: Create agent with options
-//! 2. **Connection**: Connect to Claude Code CLI via transport
-//! 3. **Query**: Send prompts and receive streaming responses
-//! 4. **Session Management**: Create/retrieve/update sessions
-//! 5. **Cleanup**: Close transport and release resources
-//!
-//! # Example
+//! The `ClaudeAgent` struct orchestrates transport, sessions, MCP integration,
+//! control protocol, hooks, and permissions for interacting with Claude Code CLI.
 //!
 //! ```rust,no_run
 //! use claude_agent_core::{ClaudeAgent, ClaudeAgentOptions};
-//! use claude_agent_types::Message;
 //! use futures::StreamExt;
-//!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//!     let options = ClaudeAgentOptions::default();
-//!     let mut agent = ClaudeAgent::new(options);
-//!
-//!     // Connect to Claude
-//!     agent.connect(None).await?;
-//!
-//!     // Send a query and process responses
-//!     {
-//!         let mut stream = agent.query("What is 2+2?").await?;
-//!         while let Some(result) = stream.next().await {
-//!             match result {
-//!                 Ok(msg) => println!("Response: {:?}", msg),
-//!                 Err(e) => eprintln!("Error: {}", e),
-//!             }
-//!         }
-//!     }
-//!
-//!     // Cleanup
-//!     agent.disconnect().await?;
-//!     Ok(())
+//! let mut agent = ClaudeAgent::new(ClaudeAgentOptions::default());
+//! agent.connect(None).await?;
+//! let mut stream = agent.query("What is 2+2?").await?;
+//! while let Some(msg) = stream.next().await {
+//!     println!("{:?}", msg?);
 //! }
+//! agent.disconnect().await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use std::sync::Arc;
@@ -69,103 +33,20 @@ use crate::permissions::PermissionHandler;
 use crate::session::{Session, SessionManager};
 use crate::types::{ContextUsageResponse, McpStatusResponse, ServerInfo};
 
-/// The core Claude Agent.
-///
-/// This struct orchestrates all components of the Claude Agent SDK:
-/// - Transport management (spawning and communicating with Claude Code CLI)
-/// - Session management (tracking conversation state)
-/// - MCP server integration (for tool calls)
-/// - Control protocol (bidirectional communication with Claude)
-/// - Hook system (extensible callbacks)
-/// - Permission handling (user approvals for file operations)
-///
-/// # Thread Safety
-///
-/// The agent is `Send + Sync` and can be safely shared across
-/// multiple threads or async tasks. Internal state is protected by `Arc<Mutex<>>`
-/// for concurrent access.
-///
-/// # Example
-///
-/// ```rust,no_run
-/// use claude_agent_core::{ClaudeAgent, ClaudeAgentOptions};
-/// use claude_agent_types::Message;
-/// use futures::StreamExt;
-///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let options = ClaudeAgentOptions::default();
-/// let mut agent = ClaudeAgent::new(options);
-///
-/// // Connect and query
-/// agent.connect(None).await?;
-/// let mut stream = agent.query("Hello, Claude!").await?;
-///
-/// while let Some(result) = stream.next().await {
-///     match result {
-///         Ok(msg) => println!("Response: {:?}", msg),
-///         Err(e) => eprintln!("Error: {}", e),
-///     }
-/// }
-/// # Ok(())
-/// # }
-/// ```
+/// The core Claude Agent — orchestrates transport, sessions, MCP, control protocol, hooks, and permissions.
 #[allow(dead_code)]
 pub struct ClaudeAgent {
-    /// Configuration options for the agent.
     options: ClaudeAgentOptions,
-
-    /// The transport layer for communicating with Claude Code CLI.
-    ///
-    /// This is set via `set_transport()` and used for all
-    /// communication. If `None`, the agent will automatically spawn a
-    /// `SubprocessTransport` on the first `connect()` call.
     transport: Option<Arc<tokio::sync::RwLock<Box<dyn Transport>>>>,
 
-    /// Abort handle for the background control loop task.
     control_loop_abort: Option<tokio::task::AbortHandle>,
-
-    /// Session manager for tracking conversation state.
-    ///
-    /// Manages multiple sessions with checkpoints and allows resuming
-    /// conversations across different turns.
     session_manager: SessionManager,
-
-    /// Registry for hook callbacks.
-    ///
-    /// Allows extending agent behavior with custom callbacks for
-    /// tool execution, permission handling, and other events.
     hook_registry: HookRegistry,
-
-    /// Handler for permission requests (file operations).
-    ///
-    /// Processes permission prompts from Claude and coordinates with
-    /// the hook system for user approval.
     permission_handler: PermissionHandler,
-
-    /// Manager for MCP (Model Context Protocol) servers.
-    ///
-    /// Manages registration and tool calls to MCP servers.
-    /// Enables Claude to use external tools and context.
     mcp_manager: McpServerManager,
-
-    /// Optional control protocol for bidirectional communication.
-    ///
-    /// When set, allows the agent to send control messages
-    /// (e.g., for tool execution results) and receive responses.
-    /// Uses a channel-based architecture for message passing.
     control_protocol: Option<Arc<ControlProtocol>>,
-
-    /// Receiver for control protocol messages.
-    ///
-    /// Receives control requests and responses from the control protocol.
-    /// Protected by `Arc<Mutex<>>` for thread-safe access.
     control_rx:
         Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<crate::control::ControlRequest>>>,
-
-    /// Optional initialization data sent on connection.
-    ///
-    /// This data is sent to Claude on connection to provide
-    /// context for the conversation (e.g., previous messages, system state).
     initialization_data: Arc<tokio::sync::Mutex<Option<serde_json::Value>>>,
 }
 
@@ -427,11 +308,16 @@ impl ClaudeAgent {
         Ok(Box::pin(stream))
     }
 
+    /// Get the control protocol, returning an error if not initialized.
+    fn require_protocol(&self) -> Result<&Arc<ControlProtocol>, ClaudeAgentError> {
+        self.control_protocol.as_ref().ok_or_else(|| {
+            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
+        })
+    }
+
     /// Send interrupt signal.
     pub async fn interrupt(&self) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.interrupt().await
     }
 
@@ -440,9 +326,7 @@ impl ClaudeAgent {
         &self,
         mode: &str,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.set_permission_mode(mode).await
     }
 
@@ -451,9 +335,7 @@ impl ClaudeAgent {
         &self,
         model: Option<&str>,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.set_model(model).await
     }
 
@@ -462,9 +344,7 @@ impl ClaudeAgent {
         &self,
         user_message_id: &str,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.rewind_files(user_message_id).await
     }
 
@@ -482,9 +362,7 @@ impl ClaudeAgent {
     /// Returns an error if the control protocol is not initialized or
     /// the request fails.
     pub async fn stop_task(&self, task_id: &str) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.stop_task(task_id).await
     }
 
@@ -499,9 +377,7 @@ impl ClaudeAgent {
     /// Returns an error if the control protocol is not initialized,
     /// the request fails, or the response cannot be parsed.
     pub async fn get_mcp_status(&self) -> Result<McpStatusResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
 
         let response = protocol.get_mcp_status().await?;
 
@@ -539,9 +415,7 @@ impl ClaudeAgent {
         &self,
         server_name: &str,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.reconnect_mcp_server(server_name).await
     }
 
@@ -565,9 +439,7 @@ impl ClaudeAgent {
         server_name: &str,
         enabled: bool,
     ) -> Result<ControlResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
         protocol.toggle_mcp_server(server_name, enabled).await
     }
 
@@ -582,9 +454,7 @@ impl ClaudeAgent {
     /// Returns an error if the control protocol is not initialized,
     /// the request fails, or the response cannot be parsed.
     pub async fn get_context_usage(&self) -> Result<ContextUsageResponse, ClaudeAgentError> {
-        let protocol = self.control_protocol.as_ref().ok_or_else(|| {
-            ClaudeAgentError::ControlProtocol("Control protocol not initialized".to_string())
-        })?;
+        let protocol = self.require_protocol()?;
 
         let response = protocol.get_context_usage().await?;
 
@@ -737,7 +607,7 @@ mod tests {
 
         // Simulate initialization data being set (normally happens in connect())
         let init_data = serde_json::json!({
-            "output_style": "verbose",
+            "outputStyle": "verbose",
             "commands": ["/help", "/context", "/compact"]
         });
         {

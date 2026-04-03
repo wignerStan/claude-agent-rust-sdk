@@ -255,7 +255,65 @@ pub trait McpServer: Send + Sync {
     async fn handle_client_message(
         &self,
         message: Value,
-    ) -> Result<serde_json::Value, ClaudeAgentError>;
+    ) -> Result<serde_json::Value, ClaudeAgentError> {
+        let method = message.get("method").and_then(|m| m.as_str());
+        let id = message.get("id");
+        match method {
+            Some("initialize") => Ok(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": self.name(), "version": "1.0.0" }
+                }
+            })),
+            Some("tools/list") => {
+                let tools = self.list_tools().await?;
+                Ok(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "tools": tools }
+                }))
+            },
+            Some("tools/call") => {
+                if let Some(p) = message.get("params") {
+                    if let Some(tool_name) = p.get("name").and_then(|n| n.as_str()) {
+                        let args = p.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+                        match self.call_tool(tool_name, args).await {
+                            Ok(result) => Ok(serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "result": result
+                            })),
+                            Err(e) => Ok(serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "error": { "code": -32000, "message": e.to_string() }
+                            })),
+                        }
+                    } else {
+                        Ok(serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": { "code": -32602, "message": "Missing tool name" }
+                        }))
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32602, "message": "Missing params" }
+                    }))
+                }
+            },
+            _ => Ok(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": { "code": -32601, "message": format!("Method not found: {:?}", method) }
+            })),
+        }
+    }
 }
 
 use serde::{Deserialize, Serialize};

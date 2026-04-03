@@ -105,6 +105,16 @@ impl ClaudeAgentClient {
         self.agent.current_session().map(|s| s.id.as_str())
     }
 
+    /// Wrap a serializable value into a successful `ControlResponse`.
+    fn wrap_success(data: serde_json::Value) -> ControlResponse {
+        ControlResponse {
+            request_id: String::new(),
+            success: true,
+            response: Some(data),
+            error: None,
+        }
+    }
+
     /// Rewind files to their state before a specific user message.
     ///
     /// This undoes all file modifications made since the given user message
@@ -137,12 +147,7 @@ impl ClaudeAgentClient {
     /// Returns information about connected, disconnected, and errored MCP servers.
     pub async fn get_mcp_status(&self) -> Result<ControlResponse, ClaudeAgentError> {
         let response = self.agent.get_mcp_status().await?;
-        Ok(ControlResponse {
-            request_id: String::new(),
-            success: true,
-            response: Some(serde_json::to_value(&response).unwrap_or_default()),
-            error: None,
-        })
+        Ok(Self::wrap_success(serde_json::to_value(&response).unwrap_or_default()))
     }
 
     /// Reconnect a disconnected MCP server.
@@ -183,12 +188,7 @@ impl ClaudeAgentClient {
     /// consumed, including token counts and usage percentages.
     pub async fn get_context_usage(&self) -> Result<ControlResponse, ClaudeAgentError> {
         let response = self.agent.get_context_usage().await?;
-        Ok(ControlResponse {
-            request_id: String::new(),
-            success: true,
-            response: Some(serde_json::to_value(&response).unwrap_or_default()),
-            error: None,
-        })
+        Ok(Self::wrap_success(serde_json::to_value(&response).unwrap_or_default()))
     }
 
     /// Get information about the Claude Code server.
@@ -198,12 +198,7 @@ impl ClaudeAgentClient {
     /// sent initialization data.
     pub async fn get_server_info(&self) -> Result<ControlResponse, ClaudeAgentError> {
         match self.agent.get_server_info().await {
-            Some(info) => Ok(ControlResponse {
-                request_id: String::new(),
-                success: true,
-                response: Some(info.data),
-                error: None,
-            }),
+            Some(info) => Ok(Self::wrap_success(serde_json::to_value(&info).unwrap_or_default())),
             None => {
                 Err(ClaudeAgentError::Transport("No server info available: not connected".into()))
             },
@@ -264,8 +259,7 @@ mod tests {
         async fn write(&self, data: &str) -> Result<(), ClaudeAgentError> {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
                 if val.get("type").and_then(|s| s.as_str()) == Some("control_request") {
-                    let req_id =
-                        val.get("request_id").and_then(|s| s.as_str()).unwrap_or("");
+                    let req_id = val.get("request_id").and_then(|s| s.as_str()).unwrap_or("");
                     let resp = serde_json::json!({
                         "type": "control_response",
                         "request_id": req_id,

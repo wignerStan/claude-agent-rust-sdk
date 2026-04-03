@@ -172,35 +172,52 @@ impl Default for ContextUsageResponse {
 /// output styles, and server capabilities.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerInfo {
-    /// Raw initialization data from the server.
-    ///
-    /// This preserves the full JSON structure from the CLI's init message,
-    /// which may include `commands`, `output_style`, and other fields that
-    /// vary by CLI version.
-    pub data: serde_json::Value,
+    /// Output style configured for the server (e.g. "concise", "verbose").
+    #[serde(default, rename = "outputStyle", skip_serializing_if = "Option::is_none")]
+    pub output_style: Option<String>,
+    /// List of available CLI commands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commands: Option<Vec<String>>,
+    /// Additional fields not explicitly modeled, preserved as-is.
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
 }
 
 impl ServerInfo {
     /// Create server info from raw JSON data.
+    ///
+    /// Accepts a JSON value and deserializes it into the typed struct.
+    /// Returns a default `ServerInfo` if deserialization fails.
     pub fn new(data: serde_json::Value) -> Self {
-        Self { data }
+        serde_json::from_value(data).unwrap_or_default()
     }
 
     /// Get the output style, if present.
     pub fn output_style(&self) -> Option<&str> {
-        self.data.get("output_style").and_then(|v| v.as_str())
+        self.output_style.as_deref()
     }
 
     /// Get the list of available commands, if present.
     pub fn commands(&self) -> Option<Vec<&str>> {
-        self.data.get("commands").and_then(|v| {
-            v.as_array().map(|arr| arr.iter().filter_map(|item| item.as_str()).collect())
-        })
+        self.commands.as_ref().map(|cmds| cmds.iter().map(String::as_str).collect())
     }
 
-    /// Get a specific field from the server info data.
+    /// Get a specific field from the extra (untyped) server info data.
+    ///
+    /// For typed fields, use the `output_style` and `commands` accessors directly.
+    /// This method looks up unknown/arbitrary keys in the extra data.
     pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
-        self.data.get(key)
+        self.extra.get(key)
+    }
+}
+
+impl Default for ServerInfo {
+    fn default() -> Self {
+        Self {
+            output_style: None,
+            commands: None,
+            extra: serde_json::Value::Object(serde_json::Map::new()),
+        }
     }
 }
 
@@ -276,7 +293,7 @@ mod tests {
     #[test]
     fn server_info_construction() {
         let data = serde_json::json!({
-            "output_style": "concise",
+            "outputStyle": "concise",
             "commands": ["/help", "/context"]
         });
         let info = ServerInfo::new(data);

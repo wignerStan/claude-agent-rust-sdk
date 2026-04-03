@@ -1,735 +1,203 @@
-//! MCP transport wrappers for different server types.
+//! MCP transport clients using rmcp for protocol handling.
 //!
-//! This module provides MCP server implementations for different transport types:
-//! - **StdioMcpServer**: Full-featured subprocess-based MCP server
-//! - **SseMcpServer**: SSE-based MCP server with HTTP POST for requests
-//! - **HttpMcpServer**: HTTP-based MCP server with JSON-RPC 2.0
-//!
-//! # Architecture
-//!
-//! All implementations follow the `McpServer` trait from the manager module.
-//! Each transport provides tool listing, tool calling, and message handling.
-//!
-//! # Example
-//!
-//! See [StdioMcpServer](struct.StdioMcpServer), [HttpMcpServer](struct.HttpMcpServer),
-//! or [SseMcpServer](struct.SseMcpServer) for usage examples.
+//! Provides MCP client connections to remote servers via:
+//! - **StdioMcpServer**: Subprocess communication over stdio
+//! - **HttpMcpServer**: HTTP-based JSON-RPC (streamable HTTP)
+//! - **SseMcpServer**: SSE-based JSON-RPC (same transport, kept for API compat)
 
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
-use tokio::process::{Child, Command};
-use tokio::sync::{oneshot, Mutex};
+use async_trait::async_trait;
+use serde_json::Value;
+use tokio::sync::OnceCell;
+
+use rmcp::model::CallToolRequestParams;
+use rmcp::service::{Peer, RunningService, ServiceExt};
+use rmcp::transport::child_process::TokioChildProcess;
+use rmcp::RoleClient;
 
 use crate::manager::{McpServer, ToolInfo};
 use claude_agent_types::ClaudeAgentError;
 
-use serde_json::{json, Value};
+/// Convert rmcp Tool to our ToolInfo.
+impl From<rmcp::model::Tool> for ToolInfo {
+    fn from(tool: rmcp::model::Tool) -> Self {
+        ToolInfo {
+            name: tool.name.into_owned(),
+            description: tool.description.map(|d| d.into_owned()),
+            input_schema: serde_json::to_value(&*tool.input_schema).unwrap_or_default(),
+        }
+    }
+}
 
-/// Stdio-based MCP server (subprocess).
-///
-/// This is the primary MCP server implementation with full functionality.
-/// It spawns a subprocess and communicates via stdio, supporting tool
-/// registration, tool calls, and JSON-RPC message handling.
-///
-/// # Features
-///
-/// - **Tool Registration**: Dynamic registration of tools with handlers
-/// - **Tool Calls**: Execute tools and return results via JSON-RPC
-/// - **Message Handling**: Process JSON-RPC messages from client
-/// - **Request Tracking**: Track pending requests and match responses
-///
-/// # Thread Safety
-///
-/// This implementation is `Send + Sync` and can be safely shared across
-/// multiple threads or async tasks. Internal state is protected by `Arc<Mutex<>>`.
+/// Stdio-based MCP client — connects to a subprocess via rmcp transport.
 pub struct StdioMcpServer {
     name: String,
     command: String,
     args: Vec<String>,
-    // Internal state
-    transport: Arc<Mutex<Option<StdioTransportState>>>,
-}
-
-// Type alias to reduce complexity
-type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, ClaudeAgentError>>>>>;
-
-struct StdioTransportState {
-    #[allow(dead_code)]
-    child: Child,
-    stdin: tokio::process::ChildStdin,
-    pending_requests: PendingRequests,
-    next_id: Arc<AtomicU64>,
+    peer: OnceCell<Peer<RoleClient>>,
 }
 
 impl StdioMcpServer {
-    /// Create a new stdio MCP server.
-    ///
-    /// # Parameters
-    ///
-    /// - `name`: Unique identifier for this server
-    /// - `command`: Command to execute (e.g., "python", "node")
-    /// - `args`: Command-line arguments to pass to the command
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// use claude_agent_mcp::StdioMcpServer;
-    ///
-    /// let server = StdioMcpServer::new("my_server".to_string(), "python".to_string(), vec!["-m".to_string()])?;
-    /// # Ok::<(), claude_agent_types::ClaudeAgentError>(())
-    /// ```
+    /// Create a new stdio MCP client.
     pub fn new(name: String, command: String, args: Vec<String>) -> Result<Self, ClaudeAgentError> {
-        Ok(Self { name, command, args, transport: Arc::new(Mutex::new(None)) })
+        Ok(Self { name, command, args, peer: OnceCell::new() })
     }
 
-    /// Register a tool.
-    ///
-    /// Registers a tool with a handler function that will be called when
-    /// the tool is invoked via JSON-RPC.
-    ///
-    /// # Parameters
-    ///
-    /// - `name`: Unique identifier for the tool
-    /// - `description`: Human-readable description of what the tool does
-    /// - `input_schema`: JSON Schema defining expected input format
-    /// - `handler`: Async function that executes the tool logic
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// server.register_tool("add", Some("Add two numbers"), json!({"type": "object"}), |args| {
-    ///     async move {
-    ///         let a = args.get("a").and_then(|v| v.as_i64()).unwrap_or(0);
-    ///         let b = args.get("b").and_then(|v| v.as_i64()).unwrap_or(0);
-    ///         Ok(json!({"result": a + b}))
-    ///     }
-    /// }).await;
-    /// ```
-    pub async fn register_tool<F, Fut>(
-        &mut self,
-        name: impl Into<String>,
-        description: Option<String>,
-        input_schema: Value,
-        handler: F,
-    ) -> Result<(), ClaudeAgentError>
-    where
-        F: Fn(Value) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Value, ClaudeAgentError>> + Send + 'static,
-    {
-        let name = name.into();
-        let _info = ToolInfo { name: name.clone(), description, input_schema };
-
-        // Box the handler to handle generic Future return type
-        let _boxed_handler = Box::new(move |args| {
-            let fut = handler(args);
-            Box::pin(fut) as Pin<Box<dyn Future<Output = _> + Send>>
-        });
-
-        // Get or create state
-        let mut guard = self.transport.lock().await;
-        if guard.is_some() {
-            // Server already connected, just add tool
-            if let Some(state) = guard.as_mut() {
-                let _tools = &mut state.pending_requests.lock().await;
-                // Note: Tool registration logic would go here
-            }
-        } else {
-            // Initialize server
-            let mut cmd = Command::new(&self.command);
-            cmd.args(&self.args);
-            cmd.stdin(std::process::Stdio::piped());
-            cmd.stdout(std::process::Stdio::piped());
-            cmd.stderr(std::process::Stdio::inherit());
-
-            let mut child = cmd.spawn().map_err(|e| {
-                ClaudeAgentError::Mcp(format!("Failed to spawn {}: {}", self.name, e))
-            })?;
-
-            let stdin =
-                child.stdin.take().ok_or_else(|| ClaudeAgentError::Mcp("No stdin".to_string()))?;
-            let stdout = child
-                .stdout
-                .take()
-                .ok_or_else(|| ClaudeAgentError::Mcp("No stdout".to_string()))?;
-
-            let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
-            let next_id = Arc::new(AtomicU64::new(1));
-
-            let pending_clone = pending_requests.clone();
-
-            // Spawn reader task
-            tokio::spawn(async move {
-                use claude_agent_transport::reader::MessageReader;
-                use futures::StreamExt;
-
-                let reader = MessageReader::new(stdout);
-                let mut stream = Box::pin(reader);
-
-                while let Some(res) = stream.next().await {
-                    match res {
-                        Ok(msg) => {
-                            // Handle JSON-RPC response
-                            if let Some(id) = msg.get("id").and_then(|i| i.as_u64()) {
-                                let mut map = pending_clone.lock().await;
-                                if let Some(sender) = map.remove(&id) {
-                                    // Check for error
-                                    if let Some(error) = msg.get("error") {
-                                        let _ = sender
-                                            .send(Err(ClaudeAgentError::Mcp(error.to_string())));
-                                    } else if let Some(result) = msg.get("result") {
-                                        let _ = sender.send(Ok(result.clone()));
-                                    } else {
-                                        let _ = sender.send(Ok(msg)); // Fallback
-                                    }
-                                }
-                            }
-                            // Handle notifications (optional)
-                        },
-                        Err(e) => {
-                            eprintln!("MCP Error: {}", e);
-                            break;
-                        },
-                    }
-                }
-            });
-
-            let state = StdioTransportState { child, stdin, pending_requests, next_id };
-            *guard = Some(state);
-        }
-
-        // Return a clone of what's inside logic?
-        // No, we can't return Arc<Mutex<State>> because State is inside Option inside Arc<Mutex>...
-        // We should just return unit and let caller use lock again.
-        // Or refactor `transport` to be Arc<Mutex<State>> and initialize loosely?
-        // But initialization requires async spawning, which is easier with lock.
-        // For now, change return type to Result<(), ...>
-        Ok(())
-    }
-
-    /// Make a JSON-RPC request to the subprocess.
-    ///
-    /// Sends a JSON-RPC 2.0 formatted message to the subprocess stdin
-    /// and waits for a matching response.
-    ///
-    /// # Parameters
-    ///
-    /// - `method`: JSON-RPC method name (e.g., "tools/list", "tools/call")
-    /// - `params`: Parameters to pass to the method
-    ///
-    /// # Returns
-    ///
-    /// Returns the JSON-RPC response value.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ClaudeAgentError::Mcp` if:
-    /// - Server not connected
-    /// - Request fails
-    /// - Response channel closes
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let result = server.request("tools/call", json!({"name": "add", "arguments": {"a": 5, "b": 3}})).await?;
-    /// println!("Result: {:?}", result);
-    /// ```
-    async fn request(&self, method: &str, params: Value) -> Result<Value, ClaudeAgentError> {
-        let guard = self.transport.lock().await;
-        if guard.is_none() {
-            return Err(ClaudeAgentError::Mcp("Not connected".to_string()));
-        }
-        drop(guard);
-
-        let tx;
-        let id;
-
-        // Scope for lock
-        {
-            let mut guard = self.transport.lock().await;
-            let state = guard.as_mut().ok_or(ClaudeAgentError::Mcp("Not connected".to_string()))?;
-
-            id = state.next_id.fetch_add(1, Ordering::SeqCst);
-            let (sender, receiver) = oneshot::channel();
-            state.pending_requests.lock().await.insert(id, sender);
-            tx = receiver;
-
-            let req = json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "method": method,
-                "params": params
-            });
-
-            let json_str = req.to_string() + "\n";
-            state
-                .stdin
-                .write_all(json_str.as_bytes())
-                .await
-                .map_err(|e| ClaudeAgentError::Mcp(format!("Write error: {}", e)))?;
-        }
-
-        // Wait for response
-        tx.await.map_err(|_| ClaudeAgentError::Mcp("Channel closed".to_string()))?
+    async fn ensure_connected(&self) -> Result<&Peer<RoleClient>, ClaudeAgentError> {
+        self.peer
+            .get_or_try_init(|| async {
+                let mut cmd = tokio::process::Command::new(&self.command);
+                cmd.args(&self.args);
+                let transport = TokioChildProcess::new(cmd).map_err(|e| {
+                    ClaudeAgentError::Mcp(format!("Failed to spawn {}: {}", self.name, e))
+                })?;
+                let running: RunningService<RoleClient, ()> =
+                    ().serve(transport).await.map_err(|e| {
+                        ClaudeAgentError::Mcp(format!(
+                            "MCP handshake failed for {}: {:?}",
+                            self.name, e
+                        ))
+                    })?;
+                let peer = running.peer().clone();
+                // Detach the background task — it keeps running as long as transport is alive
+                tokio::spawn(async move {
+                    let _ = running;
+                });
+                Ok(peer)
+            })
+            .await
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl McpServer for StdioMcpServer {
     fn name(&self) -> &str {
         &self.name
     }
 
     async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
-        let res = self.request("tools/list", json!({})).await?;
-        // Parse result.tools
-        let tools_val =
-            res.get("tools").ok_or(ClaudeAgentError::Mcp("No tools field".to_string()))?;
-        let tools: Vec<ToolInfo> = serde_json::from_value(tools_val.clone())
-            .map_err(|e| ClaudeAgentError::Mcp(format!("Invalid tool list: {}", e)))?;
-        Ok(tools)
-    }
-
-    async fn call_tool(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ClaudeAgentError> {
-        let params = json!({
-            "name": name,
-            "arguments": arguments
-        });
-        let res = self.request("tools/call", params).await?;
-        // Result should be CallToolResult (content, isError payload)
-        // Check for application level error
-        if let Some(true) = res.get("isError").and_then(|b| b.as_bool()) {
-            // It's a tool error, but we return valid JSON result often?
-            // Or map to Error?
-            // Python SDK returns Result even on tool failure usually, unless it throws.
-            // We return Value.
-        }
-        Ok(res)
-    }
-
-    async fn handle_client_message(&self, message: Value) -> Result<Value, ClaudeAgentError> {
-        let method = message.get("method").and_then(|m| m.as_str());
-        let id = message.get("id");
-        let params = message.get("params");
-
-        match method {
-            Some("initialize") => {
-                // Return server info and capabilities
-                Ok(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": {}
-                        },
-                        "serverInfo": {
-                            "name": self.name,
-                            "version": "1.0.0"
-                        }
-                    }
-                }))
-            },
-            Some("tools/list") => {
-                // Delegate to list_tools
-                let tools = self.list_tools().await?;
-                Ok(serde_json::json!({ "tools": tools }))
-            },
-            Some("tools/call") => {
-                // Delegate to call_tool
-                if let Some(params) = params {
-                    if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
-                        let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                        self.call_tool(name, args).await
-                    } else {
-                        Err(ClaudeAgentError::Mcp("Missing tool name".to_string()))
-                    }
-                } else {
-                    Err(ClaudeAgentError::Mcp("Missing params".to_string()))
-                }
-            },
-            _ => Err(ClaudeAgentError::Mcp(format!(
-                "Unsupported method: {}",
-                method.unwrap_or("unknown")
-            ))),
-        }
-    }
-}
-
-/// SSE-based MCP server.
-///
-/// This struct provides a fully functional SSE-based MCP client that connects
-/// to a remote MCP server over Server-Sent Events (SSE) with JSON-RPC 2.0.
-///
-/// # Features
-///
-/// - **SSE Communication**: Receives server-to-client messages via SSE.
-/// - **JSON-RPC over HTTP**: Sends requests via HTTP POST.
-/// - **Tool Listing**: Lists available tools from the remote MCP server.
-/// - **Tool Calls**: Executes tools via the remote server.
-/// - **Automatic Reconnection**: Handles connection drops with backoff.
-///
-/// # Thread Safety
-///
-/// This implementation is `Send + Sync` and can be safely shared across threads.
-pub struct SseMcpServer {
-    name: String,
-    url: String,
-    client: reqwest::Client,
-    #[allow(dead_code)]
-    timeout: std::time::Duration,
-}
-
-impl SseMcpServer {
-    /// Create a new SSE MCP server client.
-    ///
-    /// # Parameters
-    ///
-    /// - `name`: Unique identifier for this server
-    /// - `url`: SSE endpoint URL (e.g., "http://localhost:8080/sse")
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// use claude_agent_mcp::transports::SseMcpServer;
-    ///
-    /// let server = SseMcpServer::new("my_sse_server".to_string(), "http://localhost:8080/sse".to_string())?;
-    /// # Ok::<(), claude_agent_types::ClaudeAgentError>(())
-    /// ```
-    pub fn new(name: String, url: String) -> Result<Self, ClaudeAgentError> {
-        Self::with_timeout(name, url, std::time::Duration::from_secs(30))
-    }
-
-    /// Create a new SSE MCP server client with a custom timeout.
-    ///
-    /// # Parameters
-    ///
-    /// - `name`: Unique identifier for this server
-    /// - `url`: SSE endpoint URL
-    /// - `timeout`: Request timeout duration
-    pub fn with_timeout(
-        name: String,
-        url: String,
-        timeout: std::time::Duration,
-    ) -> Result<Self, ClaudeAgentError> {
-        let client = reqwest::Client::builder().timeout(timeout).build().map_err(|e| {
-            ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
-        })?;
-        Ok(Self { name, url, client, timeout })
-    }
-
-    /// Send a JSON-RPC request to the SSE MCP server.
-    async fn request(&self, method: &str, params: Value) -> Result<Value, ClaudeAgentError> {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
-
-        let id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        let req_body = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params
-        });
-
-        tracing::debug!(target: "mcp_sse", method = %method, id = %id, "Sending SSE MCP request");
-
-        let response = self
-            .client
-            .post(&self.url)
-            .json(&req_body)
-            .send()
+        let peer = self.ensure_connected().await?;
+        let tools = peer
+            .list_all_tools()
             .await
-            .map_err(|e| ClaudeAgentError::Mcp(format!("SSE HTTP request failed: {}", e)))?;
+            .map_err(|e| ClaudeAgentError::Mcp(format!("list_tools failed: {:?}", e)))?;
+        Ok(tools.into_iter().map(ToolInfo::from).collect())
+    }
 
-        if !response.status().is_success() {
-            return Err(ClaudeAgentError::Mcp(format!("SSE HTTP error: {}", response.status())));
-        }
-
-        let res: Value = response
-            .json()
+    async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, ClaudeAgentError> {
+        let peer = self.ensure_connected().await?;
+        let params = CallToolRequestParams::new(name.to_string())
+            .with_arguments(serde_json::from_value(arguments).unwrap_or_default());
+        let result = peer
+            .call_tool(params)
             .await
-            .map_err(|e| ClaudeAgentError::Mcp(format!("SSE JSON parse error: {}", e)))?;
-
-        // Check for JSON-RPC error
-        if let Some(error) = res.get("error") {
-            let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            let code = error.get("code").and_then(|c| c.as_i64());
-            return Err(ClaudeAgentError::Mcp(format!(
-                "SSE JSON-RPC error (code {:?}): {}",
-                code, message
-            )));
-        }
-
-        res.get("result")
-            .cloned()
-            .ok_or_else(|| ClaudeAgentError::Mcp("No result in SSE response".to_string()))
+            .map_err(|e| ClaudeAgentError::Mcp(format!("call_tool failed: {:?}", e)))?;
+        Ok(serde_json::to_value(result).unwrap_or_default())
     }
 }
 
-#[async_trait::async_trait]
-impl McpServer for SseMcpServer {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
-        let res = self.request("tools/list", json!({})).await?;
-        let tools_val = res
-            .get("tools")
-            .ok_or_else(|| ClaudeAgentError::Mcp("No tools field in SSE response".to_string()))?;
-        let tools: Vec<ToolInfo> = serde_json::from_value(tools_val.clone())
-            .map_err(|e| ClaudeAgentError::Mcp(format!("Invalid tool list from SSE: {}", e)))?;
-        Ok(tools)
-    }
-
-    async fn call_tool(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ClaudeAgentError> {
-        let params = json!({
-            "name": name,
-            "arguments": arguments
-        });
-        let res = self.request("tools/call", params).await?;
-
-        // Check for application-level tool error
-        if let Some(true) = res.get("isError").and_then(|b| b.as_bool()) {
-            // Return the result as-is; caller can inspect isError
-        }
-        Ok(res)
-    }
-
-    async fn handle_client_message(
-        &self,
-        message: serde_json::Value,
-    ) -> Result<serde_json::Value, ClaudeAgentError> {
-        let method = message.get("method").and_then(|m| m.as_str());
-        let id = message.get("id");
-        let params = message.get("params");
-
-        match method {
-            Some("initialize") => Ok(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": { "tools": {} },
-                    "serverInfo": { "name": self.name, "version": "1.0.0" }
-                }
-            })),
-            Some("tools/list") => {
-                let tools = self.list_tools().await?;
-                Ok(serde_json::json!({ "tools": tools }))
-            },
-            Some("tools/call") => {
-                if let Some(params) = params {
-                    if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
-                        let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                        self.call_tool(name, args).await
-                    } else {
-                        Err(ClaudeAgentError::Mcp("Missing tool name".to_string()))
-                    }
-                } else {
-                    Err(ClaudeAgentError::Mcp("Missing params".to_string()))
-                }
-            },
-            _ => Err(ClaudeAgentError::Mcp(format!(
-                "Unsupported method: {}",
-                method.unwrap_or("unknown")
-            ))),
-        }
-    }
-}
-
-/// HTTP-based MCP server.
-///
-/// This struct provides a fully functional HTTP-based MCP client that connects
-/// to a remote MCP server over HTTP using JSON-RPC 2.0.
-///
-/// # Features
-///
-/// - **JSON-RPC Communication**: Sends requests over HTTP POST.
-/// - **Tool Listing**: Lists available tools from the remote MCP server.
-/// - **Tool Calls**: Executes tools via the remote server.
-/// - **Timeout Handling**: Configurable request timeout.
-///
-/// # Thread Safety
-///
-/// This implementation is `Send + Sync` and can be safely shared across threads.
+/// HTTP-based MCP client using rmcp's streamable HTTP transport.
 pub struct HttpMcpServer {
     name: String,
     url: String,
-    client: reqwest::Client,
-    #[allow(dead_code)]
-    timeout: std::time::Duration,
+    peer: OnceCell<Peer<RoleClient>>,
 }
 
 impl HttpMcpServer {
-    /// Create a new HTTP MCP server client.
-    ///
-    /// # Parameters
-    ///
-    /// - `name`: Unique identifier for this server
-    /// - `url`: HTTP endpoint URL (e.g., "http://localhost:8080/mcp")
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// use claude_agent_mcp::transports::HttpMcpServer;
-    ///
-    /// let server = HttpMcpServer::new("my_http_server".to_string(), "http://localhost:8080".to_string())?;
-    /// # Ok::<(), claude_agent_types::ClaudeAgentError>(())
-    /// ```
+    /// Create a new HTTP MCP client.
     pub fn new(name: String, url: String) -> Result<Self, ClaudeAgentError> {
-        Self::with_timeout(name, url, std::time::Duration::from_secs(30))
+        Ok(Self { name, url, peer: OnceCell::new() })
     }
 
-    /// Create a new HTTP MCP server client with a custom timeout.
-    ///
-    /// # Parameters
-    ///
-    /// - `name`: Unique identifier for this server
-    /// - `url`: HTTP endpoint URL
-    /// - `timeout`: Request timeout duration
+    /// Create with timeout (kept for API compat; rmcp manages timeouts internally).
     pub fn with_timeout(
         name: String,
         url: String,
-        timeout: std::time::Duration,
+        _timeout: std::time::Duration,
     ) -> Result<Self, ClaudeAgentError> {
-        let client = reqwest::Client::builder().timeout(timeout).build().map_err(|e| {
-            ClaudeAgentError::Initialization(format!("Failed to build HTTP client: {}", e))
-        })?;
-        Ok(Self { name, url, client, timeout })
+        Self::new(name, url)
     }
 
-    /// Send a JSON-RPC request to the HTTP MCP server.
-    async fn request(&self, method: &str, params: Value) -> Result<Value, ClaudeAgentError> {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
-
-        let id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        let req_body = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params
-        });
-
-        tracing::debug!(target: "mcp_http", method = %method, id = %id, "Sending HTTP MCP request");
-
-        let response = self
-            .client
-            .post(&self.url)
-            .json(&req_body)
-            .send()
+    async fn ensure_connected(&self) -> Result<&Peer<RoleClient>, ClaudeAgentError> {
+        self.peer
+            .get_or_try_init(|| async {
+                let transport =
+                    rmcp::transport::StreamableHttpClientTransport::from_uri(self.url.clone());
+                let running: RunningService<RoleClient, ()> =
+                    ().serve(transport).await.map_err(|e| {
+                        ClaudeAgentError::Mcp(format!(
+                            "HTTP MCP handshake failed for {}: {:?}",
+                            self.name, e
+                        ))
+                    })?;
+                let peer = running.peer().clone();
+                tokio::spawn(async move {
+                    let _ = running;
+                });
+                Ok(peer)
+            })
             .await
-            .map_err(|e| ClaudeAgentError::Mcp(format!("HTTP request failed: {}", e)))?;
-
-        if !response.status().is_success() {
-            return Err(ClaudeAgentError::Mcp(format!("HTTP error: {}", response.status())));
-        }
-
-        let res: Value = response
-            .json()
-            .await
-            .map_err(|e| ClaudeAgentError::Mcp(format!("JSON parse error: {}", e)))?;
-
-        // Check for JSON-RPC error
-        if let Some(error) = res.get("error") {
-            let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            let code = error.get("code").and_then(|c| c.as_i64());
-            return Err(ClaudeAgentError::Mcp(format!(
-                "JSON-RPC error (code {:?}): {}",
-                code, message
-            )));
-        }
-
-        res.get("result")
-            .cloned()
-            .ok_or_else(|| ClaudeAgentError::Mcp("No result in response".to_string()))
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl McpServer for HttpMcpServer {
     fn name(&self) -> &str {
         &self.name
     }
 
     async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
-        let res = self.request("tools/list", json!({})).await?;
-        let tools_val = res
-            .get("tools")
-            .ok_or_else(|| ClaudeAgentError::Mcp("No tools field in response".to_string()))?;
-        let tools: Vec<ToolInfo> = serde_json::from_value(tools_val.clone())
-            .map_err(|e| ClaudeAgentError::Mcp(format!("Invalid tool list: {}", e)))?;
-        Ok(tools)
+        let peer = self.ensure_connected().await?;
+        let tools = peer
+            .list_all_tools()
+            .await
+            .map_err(|e| ClaudeAgentError::Mcp(format!("list_tools failed: {:?}", e)))?;
+        Ok(tools.into_iter().map(ToolInfo::from).collect())
     }
 
-    async fn call_tool(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ClaudeAgentError> {
-        let params = json!({
-            "name": name,
-            "arguments": arguments
-        });
-        let res = self.request("tools/call", params).await?;
+    async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, ClaudeAgentError> {
+        let peer = self.ensure_connected().await?;
+        let params = CallToolRequestParams::new(name.to_string())
+            .with_arguments(serde_json::from_value(arguments).unwrap_or_default());
+        let result = peer
+            .call_tool(params)
+            .await
+            .map_err(|e| ClaudeAgentError::Mcp(format!("call_tool failed: {:?}", e)))?;
+        Ok(serde_json::to_value(result).unwrap_or_default())
+    }
+}
 
-        // Check for application-level tool error
-        if let Some(true) = res.get("isError").and_then(|b| b.as_bool()) {
-            // Return the result as-is; caller can inspect isError
-        }
-        Ok(res)
+/// SSE-based MCP client (uses same HTTP transport; kept for API compat).
+pub struct SseMcpServer {
+    inner: HttpMcpServer,
+}
+
+impl SseMcpServer {
+    /// Create a new SSE MCP client.
+    pub fn new(name: String, url: String) -> Result<Self, ClaudeAgentError> {
+        Ok(Self { inner: HttpMcpServer::new(name, url)? })
     }
 
-    async fn handle_client_message(
-        &self,
-        message: serde_json::Value,
-    ) -> Result<serde_json::Value, ClaudeAgentError> {
-        let method = message.get("method").and_then(|m| m.as_str());
-        let id = message.get("id");
-        let params = message.get("params");
+    /// Create with timeout.
+    pub fn with_timeout(
+        name: String,
+        url: String,
+        timeout: std::time::Duration,
+    ) -> Result<Self, ClaudeAgentError> {
+        Ok(Self { inner: HttpMcpServer::with_timeout(name, url, timeout)? })
+    }
+}
 
-        match method {
-            Some("initialize") => Ok(serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": { "tools": {} },
-                    "serverInfo": { "name": self.name, "version": "1.0.0" }
-                }
-            })),
-            Some("tools/list") => {
-                let tools = self.list_tools().await?;
-                Ok(serde_json::json!({ "tools": tools }))
-            },
-            Some("tools/call") => {
-                if let Some(params) = params {
-                    if let Some(name) = params.get("name").and_then(|n| n.as_str()) {
-                        let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                        self.call_tool(name, args).await
-                    } else {
-                        Err(ClaudeAgentError::Mcp("Missing tool name".to_string()))
-                    }
-                } else {
-                    Err(ClaudeAgentError::Mcp("Missing params".to_string()))
-                }
-            },
-            _ => Err(ClaudeAgentError::Mcp(format!(
-                "Unsupported method: {}",
-                method.unwrap_or("unknown")
-            ))),
-        }
+#[async_trait]
+impl McpServer for SseMcpServer {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    async fn list_tools(&self) -> Result<Vec<ToolInfo>, ClaudeAgentError> {
+        self.inner.list_tools().await
+    }
+
+    async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, ClaudeAgentError> {
+        self.inner.call_tool(name, arguments).await
     }
 }
